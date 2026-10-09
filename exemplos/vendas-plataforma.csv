@@ -1,0 +1,3 @@
+identificador,nome,email,telefone,cpf,cidade,estado,produto,veiculo,data,horario,participantes,valor_bruto,taxa,valor_liquido,observacoes
+DEMO-1001,Cliente Demonstração Alves,demonstracao.alves@example.com,47966665544,52998224725,Balneário Camboriú,SC,Drive Xperience,Porsche 718 Boxster S,2026-10-20,14:00,1,"590,00","0,00","590,00",Linha fictícia para testar a importação
+DEMO-1001,Cliente Demonstração Alves,demonstracao.alves@example.com,47966665544,52998224725,Balneário Camboriú,SC,Drive Xperience,Porsche 718 Boxster S,2026-10-20,14:00,1,"590,00","0,00","590,00",Repetida de propósito para a segunda importação ser ignorada

@@ -1,0 +1,9 @@
+{
+  "name": "Drive Xperience",
+  "short_name": "Drive",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1B33",
+  "theme_color": "#0B1B33",
+  "lang": "pt-BR"
+}

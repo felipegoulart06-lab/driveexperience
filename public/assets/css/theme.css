@@ -1,0 +1,63 @@
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/assets/fonts/montserrat-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/assets/fonts/montserrat-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/assets/fonts/montserrat-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/assets/fonts/ibm-plex-mono-500.woff2") format("woff2");
+}
+
+:root {
+  --bg: #eef1f5;
+  --panel: #ffffff;
+  --border: #c8d0da;
+  --text: #1b2430;
+  --muted: #5b6675;
+  --field-border: #9aa5b4;
+  --primary: #0f5fa6;
+  --primary-hover: #0b4c87;
+  --sidebar: #0b1b33;
+  --sidebar-width: 232px;
+  --ok-bg: #e3f1e9;
+  --ok: #1e6b45;
+  --ok-border: #b7d9c5;
+  --warn-bg: #fbf0d5;
+  --warn: #8a5a00;
+  --warn-border: #e6d097;
+  --info-bg: #e1edf8;
+  --info: #0f5fa6;
+  --info-border: #b4cde6;
+  --danger-bg: #f8e1e1;
+  --danger: #9b2226;
+  --danger-border: #e3b5b7;
+  --neutral-bg: #eceff3;
+  --neutral: #5b6675;
+  --neutral-border: #c8d0da;
+  --line: #e1e6ed;
+  --head: #f1f4f8;
+  --hover: #f6f8fb;
+  --radius: 2px;
+  --font: "Montserrat", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --control: 32px;
+}

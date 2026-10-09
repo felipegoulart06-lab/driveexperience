@@ -1,0 +1,50 @@
+@font-face { font-family: "Barlow"; src: url("../fonts/barlow-400.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("../fonts/barlow-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("../fonts/barlow-600.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("../fonts/barlow-condensed-600.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("../fonts/barlow-condensed-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; src: url("../fonts/ibm-plex-mono-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+
+:root {
+  --navy: #0b1b33;
+  --ink: #070c14;
+  --primary: #0f5fa6;
+  --primary-hover: #0b4c87;
+  --primary-on-dark: #3a90e0;
+  --paper: #f3f5f8;
+  --surface: #ffffff;
+  --text: #1b2430;
+  --muted: #5b6675;
+  --on-dark: #ffffff;
+  --on-dark-muted: #aeb9c8;
+  --line: #d5dbe3;
+  --line-dark: #24344d;
+  --field: #9aa5b4;
+  --ok-bg: #e3f1e9; --ok: #1e6b45; --ok-line: #b7d9c5;
+  --warn-bg: #fbf0d5; --warn: #8a5a00; --warn-line: #e6d097;
+  --err-bg: #f8e1e1; --err: #9b2226; --err-line: #e3b5b7;
+  --info-bg: #e1edf8; --info: #0f5fa6; --info-line: #b4cde6;
+  --neutral-bg: #eceff3;
+  --select: #eef4fb;
+  --photo: #e6eaf0;
+  --product: #e9edf2;
+  --radius: 2px;
+  --sans: "Barlow", system-ui, sans-serif;
+  --cond: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --move: 150ms;
+  --head: 56px;
+  --tabbar: calc(56px + env(safe-area-inset-bottom));
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --move: 0ms; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--paper); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 22px; }
+img { max-width: 100%; display: block; }
+a { color: var(--primary); text-decoration: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, .cond { font-family: var(--cond); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.mono { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }

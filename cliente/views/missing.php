@@ -1,0 +1,1 @@
+<div class="wrap page"><h1>Página não encontrada</h1><p><a href="/">Voltar ao início</a></p></div>
