@@ -24,7 +24,7 @@ DB_PASSWORD=<senha do painel Database Settings>
 DB_SSLMODE=require
 ```
 
-A senha fica em Project Settings → Database no [dashboard do Supabase](https://supabase.com/dashboard/project/lxqlsdynwtjcovjktxho/settings/database). Em produção, a connection string com a role `postgres` (ou service role de conexão direta) é a adequada para o PHP.
+A senha fica em Project Settings → Database no [dashboard do Supabase](https://supabase.com/dashboard/project/lxqlsdynwtjcovjktxho/settings/database). Em produção, a connection string com a role `postgres` é a adequada para o PHP. Essa role ignora o RLS de propósito. A chave `anon` e o papel `authenticated` não têm acesso a nenhuma tabela: cada tabela tem RLS obrigatório e a política `deny_api`. Não reative esses privilégios no painel do Supabase.
 
 Sessões ficam na tabela `sessions`. PDFs ficam na coluna `documents.content` quando `STORAGE_DRIVER=database`, ou em um bucket compatível com S3 quando `STORAGE_DRIVER=s3`. Não há pasta local de documentos na produção.
 
