@@ -61,7 +61,7 @@ if ($showGrid) {
         $closeMin = $openMin + 60;
     }
 }
-$pxPerHour = 48;
+$pxPerHour = 64;
 $gridHeight = (int) (($closeMin - $openMin) / 60 * $pxPerHour);
 $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPerHour): array {
     $start = max($openMin, min($closeMin, $start));
@@ -71,25 +71,27 @@ $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPer
     }
     return [
         'top' => (int) round(($start - $openMin) / 60 * $pxPerHour),
-        'height' => max(22, (int) round(($end - $start) / 60 * $pxPerHour)),
+        'height' => max(34, (int) round(($end - $start) / 60 * $pxPerHour)),
     ];
 };
 ?>
 <div class="toolbar agenda-bar">
-    <a class="ghost icon-btn" href="<?= e($agendaUrl($prev)) ?>" aria-label="Anterior">‹</a>
-    <a class="ghost icon-btn" href="<?= e($agendaUrl($next)) ?>" aria-label="Próximo">›</a>
-    <a class="ghost" href="<?= e($agendaUrl(today())) ?>">Hoje</a>
-    <form method="get">
-        <input type="date" name="date" value="<?= e($date) ?>">
-        <select name="view">
+    <div class="agenda-nav">
+        <a class="ghost icon-btn" href="<?= e($agendaUrl($prev)) ?>" aria-label="Anterior">‹</a>
+        <a class="ghost icon-btn" href="<?= e($agendaUrl($next)) ?>" aria-label="Próximo">›</a>
+        <a class="ghost" href="<?= e($agendaUrl(today())) ?>">Hoje</a>
+    </div>
+    <form class="agenda-filters" method="get">
+        <input type="date" name="date" value="<?= e($date) ?>" aria-label="Data">
+        <select name="view" aria-label="Visualização">
             <?php foreach (['dia' => 'Dia', 'semana' => 'Semana', 'mes' => 'Mês', 'lista' => 'Lista'] as $code => $label): ?>
                 <option value="<?= e($code) ?>" <?= $viewName === $code ? 'selected' : '' ?>><?= e($label) ?></option>
             <?php endforeach; ?>
         </select>
-        <select name="vehicle_id"><option value="">Veículo</option><?php foreach ($vehicles as $vehicle): ?><option value="<?= (int) $vehicle['id'] ?>" <?= (string) ($_GET['vehicle_id'] ?? '') === (string) $vehicle['id'] ? 'selected' : '' ?>><?= e($vehicle['brand'] . ' ' . $vehicle['model']) ?></option><?php endforeach; ?></select>
-        <select name="status"><option value="">Situação</option><?php foreach (Statuses::OPERATIONAL as $code => $label): ?><option value="<?= e($code) ?>" <?= (string) ($_GET['status'] ?? '') === $code ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select>
-        <select name="user_id"><option value="">Responsável</option><?php foreach ($users as $user): ?><option value="<?= (int) $user['id'] ?>" <?= (string) ($_GET['user_id'] ?? '') === (string) $user['id'] ? 'selected' : '' ?>><?= e($user['name']) ?></option><?php endforeach; ?></select>
-        <button class="ghost" type="submit">Ver</button>
+        <select name="vehicle_id" aria-label="Veículo"><option value="">Veículo</option><?php foreach ($vehicles as $vehicle): ?><option value="<?= (int) $vehicle['id'] ?>" <?= (string) ($_GET['vehicle_id'] ?? '') === (string) $vehicle['id'] ? 'selected' : '' ?>><?= e($vehicle['brand'] . ' ' . $vehicle['model']) ?></option><?php endforeach; ?></select>
+        <select name="status" aria-label="Situação"><option value="">Situação</option><?php foreach (Statuses::OPERATIONAL as $code => $label): ?><option value="<?= e($code) ?>" <?= (string) ($_GET['status'] ?? '') === $code ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select>
+        <select name="user_id" aria-label="Responsável"><option value="">Responsável</option><?php foreach ($users as $user): ?><option value="<?= (int) $user['id'] ?>" <?= (string) ($_GET['user_id'] ?? '') === (string) $user['id'] ? 'selected' : '' ?>><?= e($user['name']) ?></option><?php endforeach; ?></select>
+        <button type="submit">Ver</button>
     </form>
 </div>
 <p class="muted agenda-range"><?= e(date_br($from)) ?> a <?= e(date_br($to)) ?></p>
@@ -104,10 +106,11 @@ $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPer
         $days[] = date('Y-m-d', $cursor);
     }
     ?>
-    <div class="agenda<?= $viewName === 'dia' ? ' is-day' : '' ?>" data-agenda data-agenda-height="<?= $gridHeight ?>">
+    <div class="agenda-scroll">
+    <div class="agenda<?= $viewName === 'dia' ? ' is-day' : '' ?>" data-agenda data-agenda-height="<?= $gridHeight ?>" data-agenda-open="<?= $openMin ?>" data-agenda-close="<?= $closeMin ?>" data-agenda-hour="<?= $pxPerHour ?>">
         <div class="agenda-gutter"></div>
         <?php foreach ($days as $day): $stamp = (int) strtotime($day); ?>
-            <div class="agenda-dayhead<?= $day === today() ? ' is-today' : '' ?>"><?= e($weekdayName[(int) date('w', $stamp)] . ' ' . date('d/m', $stamp)) ?></div>
+            <div class="agenda-dayhead<?= $day === today() ? ' is-today' : '' ?>"><small><?= e($weekdayName[(int) date('w', $stamp)]) ?></small><strong><?= e(date('d/m', $stamp)) ?></strong></div>
         <?php endforeach; ?>
         <div class="agenda-hours">
             <?php for ($minute = $openMin; $minute <= $closeMin; $minute += 60): ?>
@@ -163,10 +166,15 @@ $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPer
                     $box = $place($event['start'], $event['end']);
                     $width = 100 / $laneCount;
                     ?>
-                    <a class="agenda-event <?= e($toneFor((string) $item['operational_status'])) ?>" data-top="<?= $box['top'] ?>" data-height="<?= $box['height'] ?>" data-left="<?= e((string) ($event['lane'] * $width)) ?>" data-width="<?= e((string) $width) ?>" href="/reservas/<?= (int) $item['id'] ?>"><?= e(sprintf('%02d:%02d', intdiv($event['start'], 60), $event['start'] % 60)) ?> <?= e($item['full_name']) ?></a>
+                    <?php $vehicleLabel = trim((string) (($item['brand'] ?? '') . ' ' . ($item['model'] ?? ''))); ?>
+                    <a class="agenda-event <?= e($toneFor((string) $item['operational_status'])) ?>" data-top="<?= $box['top'] ?>" data-height="<?= $box['height'] ?>" data-left="<?= e((string) ($event['lane'] * $width)) ?>" data-width="<?= e((string) $width) ?>" href="/reservas/<?= (int) $item['id'] ?>" title="<?= e(sprintf('%02d:%02d', intdiv($event['start'], 60), $event['start'] % 60) . ' ' . $item['full_name'] . ($vehicleLabel !== '' ? ' · ' . $vehicleLabel : '')) ?>">
+                        <span class="agenda-main"><span class="agenda-when"><?= e(sprintf('%02d:%02d', intdiv($event['start'], 60), $event['start'] % 60)) ?></span><span class="agenda-who"><?= e($item['full_name']) ?></span></span>
+                        <?php if ($vehicleLabel !== ''): ?><span class="agenda-car"><?= e($vehicleLabel) ?></span><?php endif; ?>
+                    </a>
                 <?php endforeach; ?>
             </div>
         <?php endforeach; ?>
+    </div>
     </div>
 <?php elseif ($viewName === 'lista'): ?>
     <div class="card table-wrap">
@@ -206,7 +214,12 @@ $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPer
 <?php endif; ?>
 <section class="agenda-panels stack">
     <article class="card">
-        <h2>Bloqueios</h2>
+        <header class="agenda-card-head">
+            <h2>Bloqueios</h2>
+            <?php if (\App\Auth\Auth::can('agenda.manage') && !isset($_GET['bloquear'])): ?>
+                <a class="button-link" href="/agenda?date=<?= e($date) ?>&bloquear=1">Bloquear horário</a>
+            <?php endif; ?>
+        </header>
         <?php if ($blocks === []): ?>
             <p class="muted">Nenhum bloqueio neste período.</p>
         <?php else: ?>
@@ -233,7 +246,7 @@ $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPer
             </div>
         <?php endif; ?>
     </article>
-    <?php if (\App\Auth\Auth::can('agenda.manage')): ?>
+    <?php if (\App\Auth\Auth::can('agenda.manage') && isset($_GET['bloquear'])): ?>
     <form method="post" action="/agenda/bloqueios" class="card agenda-block-form">
         <?= csrf_field() ?>
         <h2>Bloquear horário</h2>
@@ -246,7 +259,10 @@ $place = static function (int $start, int $end) use ($openMin, $closeMin, $pxPer
         </div>
         <label class="inline-check agenda-all-day"><input type="checkbox" name="all_day" value="1"> Dia inteiro</label>
         <div class="field"><label>Motivo</label><textarea name="reason" rows="3" required></textarea></div>
-        <button type="submit">Bloquear</button>
+        <div class="client-actions">
+            <button type="submit">Bloquear</button>
+            <a class="ghost sheet-action" href="/agenda?date=<?= e($date) ?>">Cancelar</a>
+        </div>
     </form>
     <?php endif; ?>
 </section>

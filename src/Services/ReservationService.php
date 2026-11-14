@@ -272,7 +272,7 @@ final class ReservationService
             $paymentAmount = 0;
         }
         $paymentPlan = (string) ($input['payment_plan'] ?? '');
-        if ($paymentPlan !== '' && !in_array($paymentPlan, ['total', 'slip', 'convenio'], true)) {
+        if ($paymentPlan !== '' && !in_array($paymentPlan, ['total', 'slip', 'convenio', 'chegada'], true)) {
             $errors['payment_plan'] = 'Selecione como o valor será pago.';
         }
         $partnerMode = (string) ($input['partner_mode'] ?? 'none');
@@ -407,6 +407,29 @@ final class ReservationService
         return $this->afterSave($result, $userId);
     }
 
+    /** @return array{code: string, client: string, vehicle: string, when: string, experience: string, total: string, pdf: string}|null */
+    public function createdCard(int $id): ?array
+    {
+        $reservation = $this->find($id);
+        if ($reservation === null) {
+            return null;
+        }
+        $items = $this->items($id);
+        $when = trim(date_br((string) $reservation['scheduled_date']) . ' ' . substr((string) $reservation['start_time'], 0, 5));
+        if ((int) $reservation['duration_minutes'] > 0) {
+            $when .= ' · ' . (int) $reservation['duration_minutes'] . ' min';
+        }
+        return [
+            'code' => (string) $reservation['code'],
+            'client' => (string) ($reservation['client_name'] ?? ''),
+            'vehicle' => trim((string) ($reservation['brand'] ?? '') . ' ' . (string) ($reservation['model'] ?? '')) ?: '—',
+            'when' => $when !== '' ? $when : '—',
+            'experience' => $items === [] ? '—' : implode(' · ', array_column($items, 'description')),
+            'total' => money((int) $reservation['final_cents']),
+            'pdf' => '/reservas/' . $id . '/pdf?tipo=ficha_reserva&ver=1',
+        ];
+    }
+
     public function update(int $id, array $input, int $userId): void
     {
         $current = $this->find($id);
@@ -421,8 +444,13 @@ final class ReservationService
         $vehicleId = (int) ($input['vehicle_id'] ?? $current['vehicle_id']);
         $duration = (int) ($input['duration_minutes'] ?? $current['duration_minutes']);
         $participants = (int) ($input['participants'] ?? $current['participants']);
+        $clientId = (int) ($input['client_id'] ?? $current['client_id']);
+        $client = Connection::one('SELECT id, full_name FROM clients WHERE id = ? AND archived_at IS NULL AND anonymized_at IS NULL', [$clientId]);
         $vehicle = Connection::one('SELECT * FROM vehicles WHERE id = ? AND deleted_at IS NULL AND active = 1', [$vehicleId]);
         $errors = [];
+        if (!$client) {
+            $errors['client_id'] = 'Selecione um cliente ativo.';
+        }
         if (!$vehicle) {
             $errors['vehicle_id'] = 'Selecione um veículo ativo.';
         }
@@ -449,22 +477,110 @@ final class ReservationService
         if ($final < 0) {
             throw new ValidationException(['discount' => 'O desconto não pode zerar a reserva abaixo de zero.']);
         }
-        Connection::transaction(function () use ($vehicleId, $starts, $ends, $id, $input, $current, $date, $time, $duration, $participants, $discount, $fees, $final, $userId): void {
+        Connection::transaction(function () use ($vehicleId, $starts, $ends, $id, $input, $current, $date, $time, $duration, $participants, $discount, $fees, $final, $userId, $clientId): void {
             $this->availability->assertBookable($vehicleId, $starts, $ends, $id, !empty($input['outside_hours']));
             Connection::run(
-                'UPDATE reservations SET vehicle_id = ?, scheduled_date = ?, start_time = ?, starts_at = ?, ends_at = ?, duration_minutes = ?, participants = ?, assigned_user_id = ?, notes = ?, discount_cents = ?, fees_cents = ?, final_cents = ?, updated_by = ?, updated_at = ? WHERE id = ?',
+                'UPDATE reservations SET client_id = ?, vehicle_id = ?, scheduled_date = ?, start_time = ?, starts_at = ?, ends_at = ?, duration_minutes = ?, participants = ?, assigned_user_id = ?, notes = ?, discount_cents = ?, fees_cents = ?, final_cents = ?, updated_by = ?, updated_at = ? WHERE id = ?',
                 [
-                    $vehicleId, $date, $time, $starts, $ends, $duration, $participants,
+                    $clientId, $vehicleId, $date, $time, $starts, $ends, $duration, $participants,
                     (int) ($input['assigned_user_id'] ?? 0) ?: null,
                     blank_to_null((string) ($input['notes'] ?? '')),
                     (int) $discount, (int) $fees, $final, $userId, now(), $id,
                 ]
             );
+            if ($clientId !== (int) $current['client_id']) {
+                Connection::run('UPDATE payments SET client_id = ?, updated_at = ? WHERE reservation_id = ?', [$clientId, now(), $id]);
+                Connection::run('UPDATE productions SET client_id = ?, updated_at = ? WHERE reservation_id = ?', [$clientId, now(), $id]);
+                Connection::run('UPDATE documents SET client_id = ? WHERE reservation_id = ?', [$clientId, $id]);
+            }
             $this->finance->recalculate($id);
             $this->event($id, 'updated', (string) $current['operational_status'], (string) $current['operational_status'], 'Reserva alterada', $userId);
         });
         activity('reserva', 'Reserva ' . $current['code'] . ' alterada', 'reservation', $id);
         audit('update', 'reservation', $id, ['code' => $current['code']]);
+    }
+
+    public function addOnSpot(int $id, array $input, int $userId): void
+    {
+        $current = $this->find($id);
+        if (!$current) {
+            throw new NotFoundException('Reserva não encontrada.');
+        }
+        if (in_array($current['operational_status'], ['cancelado', 'concluido'], true)) {
+            throw new ValidationException(['spot' => 'Esta reserva não aceita acréscimo.']);
+        }
+        $kind = (string) ($input['spot'] ?? '');
+        if ($kind === 'foto') {
+            $this->addPhotoOnSpot($current, (int) ($input['modality_id'] ?? 0), $userId);
+            return;
+        }
+        if ($kind === 'extra') {
+            $this->addExtraOnSpot($current, trim((string) ($input['description'] ?? '')), parse_money((string) ($input['amount'] ?? '')), $userId);
+            return;
+        }
+        if ($kind === 'chegada') {
+            Connection::run('UPDATE reservations SET payment_plan = ?, updated_by = ?, updated_at = ? WHERE id = ?', ['chegada', $userId, now(), $id]);
+            $this->event($id, 'updated', (string) $current['operational_status'], (string) $current['operational_status'], 'Pagamento marcado para a chegada do cliente', $userId);
+            activity('reserva', 'Reserva ' . $current['code'] . ' com pagamento na chegada', 'reservation', $id);
+            return;
+        }
+        throw new ValidationException(['spot' => 'Escolha fotos, um extra ou o pagamento na chegada.']);
+    }
+
+    private function addPhotoOnSpot(array $current, int $modalityId, int $userId): void
+    {
+        $modality = Connection::one("SELECT * FROM modalities WHERE id = ? AND active = 1 AND type = 'foto'", [$modalityId]);
+        if (!$modality) {
+            throw new ValidationException(['modality_id' => 'Selecione um pacote de fotos.']);
+        }
+        $id = (int) $current['id'];
+        if (Connection::value('SELECT id FROM reservation_items WHERE reservation_id = ? AND modality_id = ?', [$id, $modalityId])) {
+            throw new ValidationException(['modality_id' => 'Este pacote já está na reserva.']);
+        }
+        $cents = (int) $modality['base_price_cents'];
+        $stamp = now();
+        Connection::transaction(function () use ($current, $modality, $cents, $userId, $stamp, $id): void {
+            Connection::insert(
+                'INSERT INTO reservation_items (reservation_id, modality_id, description, quantity, unit_price_cents, total_cents) VALUES (?, ?, ?, 1, ?, ?)',
+                [$id, (int) $modality['id'], (string) $modality['name'], $cents, $cents]
+            );
+            Connection::insert(
+                'INSERT INTO productions (public_id, client_id, reservation_id, modality_id, amount_cents, contracted_at, status, is_demo, created_by, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [bin2hex(random_bytes(16)), (int) $current['client_id'], $id, (int) $modality['id'], $cents, $stamp, 'nao_iniciado', (int) $current['is_demo'], $userId, $userId, $stamp, $stamp]
+            );
+            Connection::run(
+                'UPDATE reservations SET original_cents = original_cents + ?, final_cents = final_cents + ?, updated_by = ?, updated_at = ? WHERE id = ?',
+                [$cents, $cents, $userId, $stamp, $id]
+            );
+            $this->finance->recalculate($id);
+        });
+        $this->event($id, 'updated', (string) $current['operational_status'], (string) $current['operational_status'], 'Pacote de fotos acrescentado: ' . $modality['name'], $userId);
+        activity('reserva', 'Fotos acrescentadas na reserva ' . $current['code'], 'reservation', $id);
+    }
+
+    private function addExtraOnSpot(array $current, string $description, ?int $cents, int $userId): void
+    {
+        if (mb_strlen($description) < 3) {
+            throw new ValidationException(['description' => 'Descreva o extra.']);
+        }
+        if ($cents === null || $cents <= 0) {
+            throw new ValidationException(['amount' => 'Informe o valor do extra.']);
+        }
+        $id = (int) $current['id'];
+        $stamp = now();
+        Connection::transaction(function () use ($id, $description, $cents, $userId, $stamp): void {
+            Connection::insert(
+                'INSERT INTO reservation_items (reservation_id, modality_id, description, quantity, unit_price_cents, total_cents) VALUES (?, NULL, ?, 1, ?, ?)',
+                [$id, mb_substr($description, 0, 180), $cents, $cents]
+            );
+            Connection::run(
+                'UPDATE reservations SET original_cents = original_cents + ?, final_cents = final_cents + ?, updated_by = ?, updated_at = ? WHERE id = ?',
+                [$cents, $cents, $userId, $stamp, $id]
+            );
+            $this->finance->recalculate($id);
+        });
+        $this->event($id, 'updated', (string) $current['operational_status'], (string) $current['operational_status'], 'Extra acrescentado: ' . $description, $userId);
+        activity('reserva', 'Extra acrescentado na reserva ' . $current['code'], 'reservation', $id);
     }
 
     public function changeStatus(int $id, string $status, int $userId, ?string $reason = null): array
@@ -492,13 +608,28 @@ final class ReservationService
             'UPDATE reservations SET operational_status = ?, completed_at = ?, updated_by = ?, updated_at = ? WHERE id = ?',
             [$status, $status === 'concluido' ? now() : $current['completed_at'], $userId, now(), $id]
         );
+        if ($status === 'concluido') {
+            try {
+                (new NotificationService())->sendClosingCarousel($id);
+            } catch (\Throwable $exception) {
+                Connection::run(
+                    'UPDATE reservations SET operational_status = ?, completed_at = ?, updated_by = ?, updated_at = ? WHERE id = ?',
+                    [$from, $current['completed_at'], $userId, now(), $id]
+                );
+                if ($exception instanceof ValidationException) {
+                    throw $exception;
+                }
+                throw new ValidationException(['message' => 'A reserva não foi encerrada. Os cards não foram enviados no WhatsApp.']);
+            }
+        }
         $this->event($id, 'status', $from, $status, 'Situação alterada para ' . Statuses::label('operational', $status), $userId);
         activity('reserva', 'Reserva ' . $current['code'] . ' marcada como ' . Statuses::label('operational', $status), 'reservation', $id);
         $warning = null;
         if (in_array($status, ['confirmado', 'concluido'], true)) {
             $warning = $this->issueOperationalDocuments($id, $userId);
         }
-        return ['id' => $id, 'code' => $current['code'], 'documents_error' => $warning];
+        $receipt = $status === 'confirmado' ? (new NotificationService())->sendAppointmentReceipt($id) : null;
+        return ['id' => $id, 'code' => $current['code'], 'documents_error' => $warning, 'whatsapp' => $status === 'concluido', 'receipt_error' => $receipt];
     }
 
     public function cancel(int $id, string $reason, int $userId): array
@@ -817,6 +948,24 @@ final class ReservationService
         $result['documents_error'] = null;
         if (($result['status'] ?? '') === 'created' && in_array($result['operational_status'] ?? '', ['confirmado', 'concluido'], true)) {
             $result['documents_error'] = $this->issueOperationalDocuments((int) $result['id'], $userId);
+        }
+        if (($result['status'] ?? '') === 'created' && ($result['operational_status'] ?? '') === 'concluido') {
+            try {
+                (new NotificationService())->sendClosingCarousel((int) $result['id']);
+                $result['whatsapp'] = true;
+            } catch (\Throwable $exception) {
+                Connection::run(
+                    'UPDATE reservations SET operational_status = ?, completed_at = NULL, updated_at = ? WHERE id = ?',
+                    ['confirmado', now(), (int) $result['id']]
+                );
+                $result['operational_status'] = 'confirmado';
+                $result['whatsapp_error'] = $exception instanceof ValidationException
+                    ? (string) ($exception->errors['message'] ?? $exception->errors['phone'] ?? 'O WhatsApp dos cards não foi enviado.')
+                    : 'O WhatsApp dos cards não foi enviado.';
+            }
+        }
+        if (($result['status'] ?? '') === 'created' && ($result['operational_status'] ?? '') === 'confirmado') {
+            $result['receipt_error'] = (new NotificationService())->sendAppointmentReceipt((int) $result['id']);
         }
         return $result;
     }

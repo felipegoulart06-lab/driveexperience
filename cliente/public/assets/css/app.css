@@ -113,9 +113,9 @@ body.story-open { overflow: hidden; }
 .raffle h3 { margin: 0 0 8px; font-family: var(--cond); font-size: 26px; line-height: 28px; letter-spacing: .02em; text-transform: uppercase; color: #fff; }
 .raffle p { margin: 0; color: #fff; }
 .raffle .when { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: rgba(255, 255, 255, .72); }
-.raffle-navy { background: linear-gradient(90deg, rgba(7, 12, 20, .78) 0%, rgba(7, 12, 20, .28) 48%, rgba(7, 12, 20, .08) 100%), url("/assets/img/sorteios/camaro.jpg") center 58% / cover no-repeat; }
-.raffle-blue { background: linear-gradient(90deg, rgba(7, 12, 20, .78) 0%, rgba(7, 12, 20, .28) 48%, rgba(7, 12, 20, .08) 100%), url("/assets/img/sorteios/pontos.jpg") center 50% / cover no-repeat; }
-.raffle-green { background: linear-gradient(90deg, rgba(7, 12, 20, .78) 0%, rgba(7, 12, 20, .28) 48%, rgba(7, 12, 20, .08) 100%), url("/assets/img/sorteios/kit.jpg") 68% center / cover no-repeat; }
+.raffle-navy { background: linear-gradient(90deg, rgba(7, 12, 20, .78) 0%, rgba(7, 12, 20, .28) 48%, rgba(7, 12, 20, .08) 100%), url("../img/sorteios/camaro.jpg") center 58% / cover no-repeat; }
+.raffle-blue { background: linear-gradient(90deg, rgba(7, 12, 20, .78) 0%, rgba(7, 12, 20, .28) 48%, rgba(7, 12, 20, .08) 100%), url("../img/sorteios/pontos.jpg") center 50% / cover no-repeat; }
+.raffle-green { background: linear-gradient(90deg, rgba(7, 12, 20, .78) 0%, rgba(7, 12, 20, .28) 48%, rgba(7, 12, 20, .08) 100%), url("../img/sorteios/kit.jpg") 68% center / cover no-repeat; }
 .rail { display: grid; grid-auto-flow: column; grid-auto-columns: 78%; gap: 12px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; overflow-anchor: none; }
 .rail::-webkit-scrollbar { display: none; }
 .people { display: grid; grid-auto-flow: column; grid-auto-columns: 72%; gap: 10px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; overflow-anchor: none; }
@@ -172,10 +172,10 @@ body.story-open { overflow: hidden; }
 .kind-band { min-height: 96px; padding: 16px; display: flex; align-items: flex-end; }
 .kind-band h2, .kind-body h2 { margin: 0; color: inherit; font-size: 26px; line-height: 28px; }
 .kind-band h2 { color: #fff; }
-.kind-navy { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .75) 0%, rgba(7, 12, 20, .28) 46%, rgba(7, 12, 20, .08) 100%), url("/assets/img/experiencias/escolher-carro.jpg") 68% 62% / cover no-repeat; }
-.kind-blue { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .72) 0%, rgba(7, 12, 20, .22) 46%, rgba(7, 12, 20, .05) 100%), url("/assets/img/experiencias/fotos.jpg") 70% 62% / cover no-repeat; }
-.kind-green { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .72) 0%, rgba(7, 12, 20, .22) 46%, rgba(7, 12, 20, .05) 100%), url("/assets/img/experiencias/casamentos.jpg") 72% 58% / cover no-repeat; }
-.kind-amber { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .72) 0%, rgba(7, 12, 20, .25) 42%, rgba(7, 12, 20, .08) 100%), url("/assets/img/experiencias/eventos.jpg") center 42% / cover no-repeat; }
+.kind-navy { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .75) 0%, rgba(7, 12, 20, .28) 46%, rgba(7, 12, 20, .08) 100%), url("../img/experiencias/escolher-carro.jpg") 68% 62% / cover no-repeat; }
+.kind-blue { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .72) 0%, rgba(7, 12, 20, .22) 46%, rgba(7, 12, 20, .05) 100%), url("../img/experiencias/fotos.jpg") 70% 62% / cover no-repeat; }
+.kind-green { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .72) 0%, rgba(7, 12, 20, .22) 46%, rgba(7, 12, 20, .05) 100%), url("../img/experiencias/casamentos.jpg") 72% 58% / cover no-repeat; }
+.kind-amber { min-height: 152px; background: linear-gradient(90deg, rgba(7, 12, 20, .72) 0%, rgba(7, 12, 20, .25) 42%, rgba(7, 12, 20, .08) 100%), url("../img/experiencias/eventos.jpg") center 42% / cover no-repeat; }
 .kind-body { padding: 12px 16px 16px; }
 .kind-body p { margin: 8px 0 0; }
 .kind-body .meta, .kind-body .price { margin: 8px 0 0; }
@@ -236,7 +236,7 @@ input:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #fff inset; -webkit-te
 .stats div:first-child { border-left: 0; padding-left: 0; }
 .points .stats span { display: block; color: var(--on-dark-muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
 .invite { display: grid; grid-template-columns: 1.2fr .8fr; background: #fff; border: 1px solid var(--line); }
-.invite-main { background: linear-gradient(180deg, rgba(7, 12, 20, .62) 0%, rgba(7, 12, 20, .38) 42%, rgba(7, 12, 20, .72) 100%), url("/assets/img/sorteios/indique.jpg") center 28% / cover no-repeat; color: #fff; padding: 28px 24px 32px; }
+.invite-main { background: linear-gradient(180deg, rgba(7, 12, 20, .62) 0%, rgba(7, 12, 20, .38) 42%, rgba(7, 12, 20, .72) 100%), url("../img/sorteios/indique.jpg") center 28% / cover no-repeat; color: #fff; padding: 28px 24px 32px; }
 .invite-main .kicker { color: rgba(255, 255, 255, .72); }
 .invite-num { margin: 4px 0 0; font-family: var(--cond); font-weight: 700; font-size: 80px; line-height: .9; letter-spacing: .02em; color: #fff; }
 .invite-main h3 { margin: 0 0 12px; font-family: var(--cond); font-size: 28px; line-height: 1; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
@@ -246,7 +246,7 @@ input:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #fff inset; -webkit-te
 .invite-steps p span { display: flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; background: #1e6b45; color: #fff; font-family: var(--cond); font-size: 16px; font-weight: 700; }
 .invite-steps .btn { align-self: flex-start; margin-top: 4px; }
 .auth { min-height: calc(100dvh - var(--head) - var(--tabbar)); background: var(--navy); }
-.auth-photo { height: 40vh; background: #070c14 url("/assets/img/auth/entrar.jpg") center 58% / cover no-repeat; }
+.auth-photo { height: 40vh; background: #070c14 url("../img/auth/entrar.jpg") center 58% / cover no-repeat; }
 .auth-card { background: #fff; border-top: 3px solid var(--primary); padding: 20px 16px 32px; }
 .foot { display: none; background: var(--ink); color: var(--on-dark-muted); padding: 40px 24px; }
 .design-grid { display: grid; gap: 24px; }

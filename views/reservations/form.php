@@ -189,7 +189,8 @@ $selectedModalities = array_map('strval', (array) ($old['modality_id'] ?? []));
             <div class="field"><label>Horário</label><input type="time" name="start_time" value="<?= e(field($old, [], 'start_time')) ?>"></div>
             <div class="field"><label>Duração em minutos</label><input type="number" name="duration_minutes" readonly value="<?= e(field($old, [], 'duration_minutes')) ?>"><p class="field-help">Vem do tempo cadastrado em Produtos e experiências. Com mais de uma experiência, vale a maior.</p></div>
             <div class="field"><label>Participantes</label><input type="number" name="participants" min="1" value="<?= e(field($old, [], 'participants', '1')) ?>"></div>
-            <div class="field"><label>Responsável</label><select name="assigned_user_id"><option value="">Não definido</option><?php foreach ($users as $user): ?><option value="<?= (int) $user['id'] ?>" <?= field($old, [], 'assigned_user_id') == $user['id'] ? 'selected' : '' ?>><?= e($user['name']) ?></option><?php endforeach; ?></select></div>
+            <?php $instructorId = field($old, [], 'assigned_user_id', (string) (\App\Auth\Auth::id() ?? '')); ?>
+            <div class="field"><label>Instrutor</label><select name="assigned_user_id"><option value="">Não definido</option><?php foreach ($users as $user): ?><option value="<?= (int) $user['id'] ?>" <?= (string) $instructorId === (string) $user['id'] ? 'selected' : '' ?>><?= e($user['name']) ?></option><?php endforeach; ?></select><p class="field-help">O funcionário cadastrado em Usuários é o instrutor que conduz a experiência.</p></div>
             <div class="field"><label>Situação inicial</label><select name="operational_status"><?php foreach (['novo', 'aguardando_dados', 'aguardando_confirmacao', 'confirmado', 'em_andamento'] as $code): ?><option value="<?= e($code) ?>" <?= field($old, [], 'operational_status', 'aguardando_confirmacao') === $code ? 'selected' : '' ?>><?= e(Statuses::label('operational', $code)) ?></option><?php endforeach; ?></select><p class="field-help">Cliente na loja e a experiência começa agora: Em andamento. Cliente na loja com horário marcado para depois: Confirmado.</p></div>
         </div>
         <div class="actions"><button class="ghost" type="button" data-availability>Verificar disponibilidade</button><span data-availability-result></span></div>
@@ -222,7 +223,7 @@ $selectedModalities = array_map('strval', (array) ($old['modality_id'] ?? []));
                     <option value="convenio" <?= $paymentPlan === 'convenio' ? 'selected' : '' ?>>Convênio</option>
                 </select>
                 <p class="field-help">Total quita a reserva. Slip registra só a parte paga agora. Convênio zera o valor.</p>
-            </div>
+                <p class="field-help">Na chegada, o saldo fica pendente até o cliente chegar. Antecipado quita agora. Parte agora registra só o que já foi pago.</p>
         </div>
         <div class="form-grid" data-pay-extra <?= in_array($paymentPlan, ['total', 'slip'], true) ? '' : 'hidden' ?>>
             <div class="field" data-pay-amount <?= $paymentPlan === 'slip' ? '' : 'hidden' ?>><label>Valor pago agora</label><input name="payment_amount" data-money value="<?= e(field($old, [], 'payment_amount', '0,00')) ?>"></div>
@@ -239,12 +240,13 @@ $selectedModalities = array_map('strval', (array) ($old['modality_id'] ?? []));
     <section class="card" data-step>
         <h2>Revisão</h2>
         <div class="review-list" data-review></div>
-        <p class="field-help">Confira os dados. O próximo passo grava a reserva só depois que você confirmar o resumo.</p>
+        <p class="field-help">Confira os dados e confirme a reserva nesta tela.</p>
         <p class="field-help" data-step-error></p>
     </section>
     <div class="wizard-actions">
-        <button class="ghost" type="button" data-prev>Voltar</button>
+        <button class="ghost" type="button" data-prev hidden>Voltar</button>
         <button class="ghost" type="button" data-next>Continuar</button>
-        <button type="submit" data-finish hidden>Ver resumo</button>
+        <button type="submit" name="intent" value="save" data-confirm-reservation hidden disabled>Confirmar reserva</button>
+        <p class="wizard-gate" data-finish-hint>Preencha os campos obrigatórios para continuar.</p>
     </div>
 </form>

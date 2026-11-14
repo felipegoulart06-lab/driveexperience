@@ -25,6 +25,7 @@ final class TrackingController
             'canManage' => Auth::can('tracking.manage'),
             'endpoint' => $this->endpoint(),
             'token' => Auth::can('tracking.manage') ? (string) Settings::get('tracking_token', '') : '',
+            'mapboxToken' => (string) env('MAPBOX_TOKEN', ''),
         ]);
     }
 

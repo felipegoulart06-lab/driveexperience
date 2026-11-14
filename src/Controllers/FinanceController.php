@@ -15,11 +15,15 @@ final class FinanceController
     {
         $from = parse_date((string) $request->query('from', '')) ?: date('Y-m-01');
         $to = parse_date((string) $request->query('to', '')) ?: date('Y-m-t');
+        $finance = new FinanceService();
+        $cash = $finance->openCash();
         view('finance/index', [
             'title' => 'Financeiro',
             'from' => $from,
             'to' => $to,
-            'summary' => (new FinanceService())->summary($from, $to),
+            'summary' => $finance->summary($from, $to),
+            'cash' => $cash,
+            'cashMovement' => $cash ? $finance->cashMovement($cash) : null,
             'payments' => Connection::all("SELECT p.*, c.full_name, r.code, m.name AS method_name FROM payments p JOIN clients c ON c.id = p.client_id LEFT JOIN reservations r ON r.id = p.reservation_id LEFT JOIN payment_methods m ON m.id = p.method_id WHERE substr(COALESCE(p.paid_at, p.created_at), 1, 10) BETWEEN ? AND ? ORDER BY p.id DESC", [$from, $to]),
             'expenses' => Connection::all('SELECT e.*, c.name AS category FROM expenses e LEFT JOIN expense_categories c ON c.id = e.category_id WHERE e.deleted_at IS NULL AND e.expense_date BETWEEN ? AND ? ORDER BY e.expense_date DESC', [$from, $to]),
             'fees' => Connection::all("SELECT id, code, platform_fee_cents FROM reservations WHERE platform_fee_cents > 0 AND deleted_at IS NULL ORDER BY id DESC LIMIT 20"),
@@ -34,12 +38,12 @@ final class FinanceController
         (new FinanceService())->addExpense([
             'amount_cents' => (int) $amount,
             'description' => $request->str('description'),
+            'category_name' => $request->str('category'),
             'expense_date' => $request->str('expense_date'),
-            'category_id' => $request->int('category_id'),
             'method_id' => $request->int('method_id'),
             'reservation_id' => $request->int('reservation_id') ?: null,
         ], (int) Auth::id());
-        redirect_with('/financeiro', 'ok', 'Despesa registrada.');
+        redirect_with('/financeiro' . $this->period($request), 'ok', 'Despesa registrada.');
     }
 
     public function destroyExpense(Request $request, string $id): void
@@ -58,5 +62,27 @@ final class FinanceController
     {
         (new FinanceService())->launchPlatformFee((int) $id, (int) Auth::id());
         redirect_with('/financeiro', 'ok', 'Taxa da plataforma lançada como despesa.');
+    }
+
+    public function openCash(Request $request): void
+    {
+        (new FinanceService())->openRegister(parse_money($request->str('opening_amount')) ?? -1, (int) Auth::id(), $request->str('note'));
+        redirect_with('/financeiro' . $this->period($request), 'ok', 'Caixa aberto.');
+    }
+
+    public function closeCash(Request $request): void
+    {
+        (new FinanceService())->closeRegister(parse_money($request->str('counted_amount')) ?? -1, (int) Auth::id(), $request->str('note'));
+        redirect_with('/financeiro' . $this->period($request), 'ok', 'Caixa fechado.');
+    }
+
+    private function period(Request $request): string
+    {
+        $from = parse_date($request->str('from'));
+        $to = parse_date($request->str('to'));
+        if (!$from || !$to) {
+            return '';
+        }
+        return '?from=' . rawurlencode($from) . '&to=' . rawurlencode($to);
     }
 }

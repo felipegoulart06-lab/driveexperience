@@ -36,7 +36,7 @@ if (str_starts_with($path, '/assets/')) {
 header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
-header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org https://a.tile.openstreetmap.org https://b.tile.openstreetmap.org https://c.tile.openstreetmap.org; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'");
+header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob: https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com; connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com; worker-src 'self' blob:; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'");
 header('X-Robots-Tag: noindex, nofollow');
 
 $request = new Request();

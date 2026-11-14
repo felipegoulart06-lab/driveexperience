@@ -2,6 +2,10 @@
 /storage/*
 !/storage/.gitignore
 .env
+__pycache__/
+*.pyc
+/docs/curso/
+/docs/Curso-Drive-Xperience.pdf
 /composer.phar
 /composer-setup.php
 .phpunit.result.cache

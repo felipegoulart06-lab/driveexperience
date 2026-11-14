@@ -49,6 +49,14 @@ final class QuoteController
     public function convert(Request $request, string $id): void
     {
         $reservationId = (new QuoteService())->convert((int) $id, (int) Auth::id());
-        redirect_with('/reservas/' . $reservationId, 'ok', 'Orçamento convertido em reserva.');
+        $card = (new \App\Services\ReservationService())->createdCard($reservationId);
+        if ($card !== null) {
+            \App\Http\Session::put('_flash', [
+                'type' => 'ok',
+                'message' => 'Reserva ' . $card['code'] . ' concluída.',
+                'card' => $card,
+            ]);
+        }
+        redirect('/reservas/' . $reservationId);
     }
 }

@@ -4,17 +4,24 @@
             "runtime": "vercel-php@0.8.0",
             "memory": 1024,
             "maxDuration": 60,
-            "excludeFiles": "{storage/**,tests/**,cliente/**,AUTOS/**,.git/**}"
+            "excludeFiles": "{storage/**,tests/**,docs/**,AUTOS/**,cliente/public/**,.git/**}"
         }
     },
     "routes": [
         { "src": "/assets/(.*)", "dest": "/public/assets/$1" },
+        { "src": "/favicon.png", "dest": "/public/favicon.png" },
+        { "src": "/apple-touch-icon.png", "dest": "/public/apple-touch-icon.png" },
         { "src": "/robots.txt", "dest": "/public/robots.txt" },
+        { "src": "/app/assets/(.*)", "dest": "/cliente/public/assets/$1" },
+        { "src": "/app/manifest.webmanifest", "dest": "/cliente/public/manifest.webmanifest" },
+        { "src": "/api/cron.php", "dest": "/api/cron.php" },
+        { "src": "/app", "dest": "/api/cliente.php" },
+        { "src": "/app/(.*)", "dest": "/api/cliente.php" },
         { "src": "/(.*)", "dest": "/api/index.php" }
     ],
     "crons": [
         {
-            "path": "/api/cron/alertas",
+            "path": "/api/cron.php",
             "schedule": "0 12 * * *"
         }
     ]

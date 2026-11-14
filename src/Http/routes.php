@@ -16,6 +16,7 @@ use App\Controllers\InstallController;
 use App\Controllers\IntegrationController;
 use App\Controllers\PhotoController;
 use App\Controllers\ProductController;
+use App\Controllers\PublicPageController;
 use App\Controllers\QuoteController;
 use App\Controllers\ReportController;
 use App\Controllers\ReservationController;
@@ -30,11 +31,15 @@ function register_routes(Router $router): void
 {
     $router->get('/login', [AuthController::class, 'form'], public: true);
     $router->post('/login', [AuthController::class, 'login'], public: true);
+    $router->get('/login/2fa', [AuthController::class, 'twoFactorForm'], public: true);
+    $router->post('/login/2fa', [AuthController::class, 'twoFactor'], public: true);
     $router->post('/sair', [AuthController::class, 'logout']);
     $router->get('/instalar', [InstallController::class, 'form'], public: true);
     $router->post('/instalar', [InstallController::class, 'store'], public: true, csrf: false);
     $router->post('/emergencia/senha', [InstallController::class, 'emergency'], public: true, csrf: false);
     $router->get('/health', [HealthController::class, 'show'], public: true);
+    $router->get('/indicacao', [PublicPageController::class, 'indicacao'], public: true);
+    $router->get('/aplicativo', [PublicPageController::class, 'aplicativo'], public: true);
     $router->post('/api/webhooks/entrada/{token}', [WebhookController::class, 'inbound'], public: true, csrf: false);
     $router->post('/api/webhooks/{key}', [WebhookController::class, 'receive'], public: true, csrf: false);
     $router->post('/api/rastreio', [TrackingController::class, 'ingest'], public: true, csrf: false);
@@ -59,12 +64,15 @@ function register_routes(Router $router): void
     $router->get('/reservas/nova', [ReservationController::class, 'create'], ['reservations.manage']);
     $router->post('/reservas', [ReservationController::class, 'store'], ['reservations.manage']);
     $router->get('/reservas/{id}/csv', [ReservationController::class, 'csv'], ['reservations.view']);
+    $router->get('/reservas/{id}/previa', [ReservationController::class, 'preview'], ['reservations.view']);
+    $router->get('/reservas/{id}/pdf', [ReservationController::class, 'pdf'], ['reservations.view']);
     $router->get('/reservas/{id}', [ReservationController::class, 'show'], ['reservations.view']);
     $router->post('/reservas/{id}/whatsapp', [ReservationController::class, 'whatsapp']);
     $router->post('/reservas/{id}', [ReservationController::class, 'update'], ['reservations.manage']);
     $router->post('/reservas/{id}/status', [ReservationController::class, 'status'], ['reservations.manage']);
     $router->post('/reservas/{id}/cancelar', [ReservationController::class, 'cancel'], ['reservations.cancel']);
     $router->post('/reservas/{id}/pagamentos', [ReservationController::class, 'pay']);
+    $router->post('/reservas/{id}/na-hora', [ReservationController::class, 'onSpot'], ['reservations.manage']);
     $router->post('/reservas/{id}/documentos/{key}', [ReservationController::class, 'document'], ['documents.issue']);
 
     $router->get('/agenda', [AgendaController::class, 'index'], ['agenda.view']);
@@ -110,6 +118,8 @@ function register_routes(Router $router): void
     $router->post('/financeiro/despesas/{id}/excluir', [FinanceController::class, 'destroyExpense'], ['finance.manage']);
     $router->post('/financeiro/pagamentos/{id}/estornar', [FinanceController::class, 'refund'], ['finance.manage']);
     $router->post('/financeiro/reservas/{id}/taxa', [FinanceController::class, 'fee'], ['finance.manage']);
+    $router->post('/financeiro/caixa/abrir', [FinanceController::class, 'openCash'], ['finance.manage']);
+    $router->post('/financeiro/caixa/fechar', [FinanceController::class, 'closeCash'], ['finance.manage']);
 
     $router->get('/documentos', [DocumentController::class, 'index'], ['documents.view']);
     $router->get('/documentos/{key}', [DocumentController::class, 'download'], ['documents.view']);
@@ -145,6 +155,13 @@ function register_routes(Router $router): void
     $router->post('/usuarios/perfis/{id}', [UserController::class, 'permissions'], ['users.manage']);
 
     $router->get('/configuracoes', [SettingsController::class, 'index'], ['settings.manage']);
+    $router->get('/configuracoes/whatsapp', [SettingsController::class, 'whatsapp'], ['settings.manage']);
+    $router->post('/configuracoes/whatsapp/2fa', [SettingsController::class, 'whatsappTwoFactor'], ['settings.manage']);
+    $router->post('/configuracoes/whatsapp/2fa/ativar', [SettingsController::class, 'whatsappTwoFactorActivate'], ['settings.manage']);
+    $router->post('/configuracoes/whatsapp', [SettingsController::class, 'whatsappConnect'], ['settings.manage']);
+    $router->post('/configuracoes/whatsapp/desconectar', [SettingsController::class, 'whatsappDisconnect'], ['settings.manage']);
     $router->post('/configuracoes', [SettingsController::class, 'save'], ['settings.manage']);
     $router->post('/configuracoes/modelos', [SettingsController::class, 'template'], ['settings.manage']);
+    $router->get('/configuracoes/logo', [SettingsController::class, 'logo'], ['settings.manage']);
+    $router->get('/configuracoes/assinatura', [SettingsController::class, 'signature'], ['settings.manage']);
 }

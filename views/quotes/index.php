@@ -12,25 +12,15 @@ foreach ($modalities as $modality) {
     $groups[$type][] = $modality;
 }
 $groupTitles = ['experiencia' => 'Experiências', 'foto' => 'Pacotes de fotos'];
+$creating = \App\Auth\Auth::can('quotes.manage') && isset($_GET['novo']);
 ?>
-<div class="card table-wrap">
-    <table class="quotes-table">
-        <thead><tr><th>Código</th><th>Cliente</th><th>Validade</th><th class="num">Valor</th><th>Situação</th></tr></thead>
-        <tbody>
-        <?php foreach ($quotes as $quote): ?>
-            <tr>
-                <td><a class="code" href="/orcamentos/<?= (int) $quote['id'] ?>"><?= e($quote['code']) ?></a></td>
-                <td><?= e($quote['full_name']) ?></td>
-                <td class="when"><?= e(date_br($quote['valid_until'])) ?></td>
-                <td class="num"><?= e(money((int) $quote['total_cents'])) ?></td>
-                <td><?= e($quote['status']) ?></td>
-            </tr>
-        <?php endforeach; ?>
-        <?php if ($quotes === []): ?><tr><td colspan="5">Nenhum orçamento emitido.</td></tr><?php endif; ?>
-        </tbody>
-    </table>
+<?php if (\App\Auth\Auth::can('quotes.manage') && !$creating): ?>
+<div class="toolbar">
+    <a class="button-link" href="/orcamentos?novo=1">Novo orçamento</a>
 </div>
-<?php if (\App\Auth\Auth::can('quotes.manage')): ?>
+<?php endif; ?>
+
+<?php if ($creating): ?>
 <form method="post" action="/orcamentos" class="card stack quote-form" data-quote data-prices="<?= e(json_encode($priceMap, JSON_UNESCAPED_UNICODE)) ?>">
     <?= csrf_field() ?>
     <h2>Novo orçamento</h2>
@@ -66,6 +56,27 @@ $groupTitles = ['experiencia' => 'Experiências', 'foto' => 'Pacotes de fotos'];
     <?php endforeach; ?>
     <h3 class="quote-section quote-notes">Observações</h3>
     <div class="field"><textarea name="notes" rows="3"></textarea></div>
-    <div class="quote-foot"><button type="submit">Emitir orçamento</button></div>
+    <div class="quote-foot">
+        <button type="submit">Emitir orçamento</button>
+        <a class="ghost sheet-action" href="/orcamentos">Cancelar</a>
+    </div>
 </form>
 <?php endif; ?>
+
+<div class="card table-wrap">
+    <table class="quotes-table">
+        <thead><tr><th>Código</th><th>Cliente</th><th>Validade</th><th class="num">Valor</th><th>Situação</th></tr></thead>
+        <tbody>
+        <?php foreach ($quotes as $quote): ?>
+            <tr>
+                <td><a class="code" href="/orcamentos/<?= (int) $quote['id'] ?>"><?= e($quote['code']) ?></a></td>
+                <td><?= e($quote['full_name']) ?></td>
+                <td class="when"><?= e(date_br($quote['valid_until'])) ?></td>
+                <td class="num"><?= e(money((int) $quote['total_cents'])) ?></td>
+                <td><?= e($quote['status']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+        <?php if ($quotes === []): ?><tr><td colspan="5">Nenhum orçamento emitido.</td></tr><?php endif; ?>
+        </tbody>
+    </table>
+</div>

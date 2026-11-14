@@ -1,3 +1,9 @@
+<?php
+$panel = (string) ($_GET['novo'] ?? '');
+$creatingWebhook = $panel === 'webhook';
+$creatingPlatform = $panel === 'plataforma';
+$creatingImport = $panel === 'importar';
+?>
 <section class="status-cards">
     <article class="card status-card">
         <h2>E-mail<span class="status-dot<?= $notifications['email'] ? ' is-on' : '' ?>" aria-hidden="true"></span></h2>
@@ -5,7 +11,7 @@
     </article>
     <article class="card status-card">
         <h2>WhatsApp<span class="status-dot<?= $notifications['whatsapp'] ? ' is-on' : '' ?>" aria-hidden="true"></span></h2>
-        <p><?= $notifications['whatsapp'] ? 'Conexão configurada no servidor.' : 'Conexão não configurada no servidor. Nenhuma mensagem é enviada.' ?></p>
+        <p><?= $notifications['whatsapp'] ? 'WhatsApp da empresa conectado.' : 'Desconectado. O QR Code fica em Configurações.' ?></p>
     </article>
     <article class="card status-card">
         <h2>Conector<span class="status-dot is-on" aria-hidden="true"></span></h2>
@@ -13,8 +19,25 @@
     </article>
 </section>
 <article class="card stack">
-    <h2>Webhooks do site</h2>
+    <div class="toolbar">
+        <h2>Webhooks do site</h2>
+        <?php if (!$creatingWebhook): ?>
+            <a class="button-link" href="/integracoes?novo=webhook">Novo webhook</a>
+        <?php endif; ?>
+    </div>
     <p class="field-help">Cada webhook gera um link para colar no formulário do WordPress. Com o modo teste ligado, o envio aparece na configuração e ainda não cria reserva. Fora do teste, a reserva entra no painel, inclusive quando já foi paga.</p>
+    <?php if ($creatingWebhook): ?>
+    <form method="post" action="/integracoes/webhooks" class="form-grid">
+        <?= csrf_field() ?>
+        <div class="full"><h3>Novo webhook</h3></div>
+        <div class="field"><label>Nome</label><input name="name" required placeholder="Site Drive Xperience"></div>
+        <div class="field"><label>Domínios permitidos</label><textarea name="allowed_domains" placeholder="odrivexperience.com.br"></textarea><p class="field-help">Um domínio por linha. Em branco, aceita qualquer origem.</p></div>
+        <div class="full client-actions">
+            <button type="submit">Criar webhook</button>
+            <a class="ghost sheet-action" href="/integracoes">Cancelar</a>
+        </div>
+    </form>
+    <?php endif; ?>
     <div class="bleed table-wrap">
         <table>
             <thead><tr><th>Nome</th><th>Link</th><th>Domínios</th><th>Situação</th><th>Ação</th></tr></thead>
@@ -39,15 +62,30 @@
         </table>
     </div>
 </article>
-<form method="post" action="/integracoes/webhooks" class="card form-grid">
-    <?= csrf_field() ?>
-    <div class="full"><h2>Novo webhook</h2></div>
-    <div class="field"><label>Nome</label><input name="name" required placeholder="Site Drive Xperience"></div>
-    <div class="field"><label>Domínios permitidos</label><textarea name="allowed_domains" placeholder="odrivexperience.com.br"></textarea><p class="field-help">Um domínio por linha. Em branco, aceita qualquer origem.</p></div>
-    <div class="full"><button type="submit">Criar webhook</button></div>
-</form>
 <article class="card stack">
-    <h2>Plataformas</h2>
+    <div class="toolbar">
+        <h2>Plataformas</h2>
+        <?php if (!$creatingPlatform): ?>
+            <a class="button-link" href="/integracoes?novo=plataforma">Nova plataforma</a>
+        <?php endif; ?>
+    </div>
+    <?php if ($creatingPlatform): ?>
+    <form method="post" action="/integracoes/plataformas" class="stack platform-form">
+        <?= csrf_field() ?>
+        <h3>Nova plataforma</h3>
+        <div class="form-grid">
+            <div class="field"><label>Nome</label><input name="name" required></div>
+            <div class="field"><label>Identificador</label><input name="slug" placeholder="exemplo-plataforma"></div>
+            <div class="field"><label>Conector</label><select name="connector"><option value="pendente">Pendente de configuração</option><option value="generico">Webhook genérico</option></select></div>
+            <div class="field"><label>Segredo do webhook</label><input name="webhook_secret"></div>
+            <div class="field full"><label>Observações</label><textarea name="notes"></textarea></div>
+        </div>
+        <div class="photo-sale-foot">
+            <button type="submit">Registrar</button>
+            <a class="ghost sheet-action" href="/integracoes">Cancelar</a>
+        </div>
+    </form>
+    <?php endif; ?>
     <div class="bleed table-wrap">
         <table class="platforms-table">
             <thead><tr><th>Nome</th><th>Conector</th><th>Situação</th><th>Última sincronização</th><th>Ação</th></tr></thead>
@@ -91,33 +129,35 @@
         <?php endforeach; ?>
     </aside>
 </div>
-<form method="post" action="/integracoes/plataformas" class="card stack platform-form">
-    <?= csrf_field() ?>
-    <h2>Nova plataforma</h2>
-    <div class="form-grid">
-        <div class="field"><label>Nome</label><input name="name" required></div>
-        <div class="field"><label>Identificador</label><input name="slug" placeholder="exemplo-plataforma"></div>
-        <div class="field"><label>Conector</label><select name="connector"><option value="pendente">Pendente de configuração</option><option value="generico">Webhook genérico</option></select></div>
-        <div class="field"><label>Segredo do webhook</label><input name="webhook_secret"></div>
-        <div class="field full"><label>Observações</label><textarea name="notes"></textarea></div>
+<article class="card stack">
+    <div class="toolbar">
+        <h2>Importar CSV ou XLSX</h2>
+        <?php if (!$creatingImport): ?>
+            <a class="button-link" href="/integracoes?novo=importar">Nova importação</a>
+        <?php endif; ?>
     </div>
-    <div class="photo-sale-foot"><button type="submit">Registrar</button></div>
-</form>
-<form method="post" action="/integracoes/importar" enctype="multipart/form-data" class="card stack import-form">
-    <?= csrf_field() ?>
-    <h2>Importar CSV ou XLSX</h2>
-    <div class="import-grid">
-        <div class="field"><label>Plataforma</label><select name="platform_id"><option value="">Selecionar</option><?php foreach ($platforms as $platform): ?><option value="<?= (int) $platform['id'] ?>"><?= e($platform['name']) ?></option><?php endforeach; ?></select></div>
-        <div class="field"><label>Arquivo</label>
-            <div class="file-field">
-                <input type="file" name="file" accept=".csv,.xlsx,text/csv" required>
-                <label class="file-pick">Escolher arquivo</label>
-                <span data-file-name>Nenhum arquivo escolhido</span>
+    <?php if ($creatingImport): ?>
+    <form method="post" action="/integracoes/importar" enctype="multipart/form-data" class="stack import-form">
+        <?= csrf_field() ?>
+        <div class="import-grid">
+            <div class="field"><label>Plataforma</label><select name="platform_id"><option value="">Selecionar</option><?php foreach ($platforms as $platform): ?><option value="<?= (int) $platform['id'] ?>"><?= e($platform['name']) ?></option><?php endforeach; ?></select></div>
+            <div class="field"><label>Arquivo</label>
+                <div class="file-field">
+                    <input type="file" name="file" accept=".csv,.xlsx,text/csv" required>
+                    <label class="file-pick">Escolher arquivo</label>
+                    <span data-file-name>Nenhum arquivo escolhido</span>
+                </div>
             </div>
         </div>
-    </div>
-    <div class="photo-sale-foot"><button type="submit">Enviar para mapeamento</button></div>
-</form>
+        <div class="photo-sale-foot">
+            <button type="submit">Enviar para mapeamento</button>
+            <a class="ghost sheet-action" href="/integracoes">Cancelar</a>
+        </div>
+    </form>
+    <?php else: ?>
+        <p class="field-help">Use o botão acima quando precisar enviar um arquivo para mapeamento.</p>
+    <?php endif; ?>
+</article>
 <section class="sync-panels stack">
     <article class="card">
         <h2>Importações</h2>

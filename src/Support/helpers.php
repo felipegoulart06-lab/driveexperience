@@ -397,9 +397,30 @@ function json_out(array $data, int $status = 200): never
     exit;
 }
 
+function curl_apply_ca($channel): void
+{
+    if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
+        curl_setopt($channel, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+    }
+}
+
 function request_ip(): string
 {
     return substr((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 64);
+}
+
+function absolute_url(string $path): string
+{
+    $path = '/' . ltrim($path, '/');
+    $configured = rtrim((string) env('APP_URL', ''), '/');
+    if ($configured !== '' && !preg_match('#://(localhost|127\.0\.0\.1)(:\d+)?$#i', $configured)) {
+        return $configured . $path;
+    }
+    $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host !== '') {
+        return (is_https() ? 'https' : 'http') . '://' . $host . $path;
+    }
+    return ($configured !== '' ? $configured : 'http://localhost:8080') . $path;
 }
 
 function is_https(): bool
@@ -456,10 +477,10 @@ function csrf_field(): string
 function nav_items(): array
 {
     return [
+        ['/agenda', 'Agenda', 'agenda.view'],
         ['/', 'Painel', 'dashboard.view'],
         ['/clientes', 'Clientes', 'clients.view'],
         ['/reservas', 'Reservas', 'reservations.view'],
-        ['/agenda', 'Agenda', 'agenda.view'],
         ['/veiculos', 'Veículos', 'vehicles.view'],
         ['/rastreio', 'Rastreio', 'tracking.view'],
         ['/produtos', 'Produtos e experiências', 'products.view'],

@@ -119,8 +119,15 @@ final class FinanceService
         if ($date === null) {
             $errors['expense_date'] = 'Informe a data da despesa.';
         }
+        $categoryName = trim((string) ($data['category_name'] ?? ''));
+        if ($categoryName === '' && empty($data['category_id'])) {
+            $errors['category'] = 'Informe o tipo da despesa.';
+        }
         if ($errors !== []) {
             throw new ValidationException($errors);
+        }
+        if ($categoryName !== '' && empty($data['category_id'])) {
+            $data['category_id'] = $this->categoryId($categoryName);
         }
         $source = blank_to_null((string) ($data['source_key'] ?? ''));
         if ($source && Connection::one('SELECT id FROM expenses WHERE source_key = ? AND deleted_at IS NULL', [$source])) {
@@ -203,5 +210,71 @@ final class FinanceService
             'cash_result' => $received - $expenses,
             'accrual_result' => $sold - $expenses,
         ];
+    }
+
+    public function categoryId(string $name): int
+    {
+        $name = trim($name);
+        $existing = Connection::one('SELECT id FROM expense_categories WHERE LOWER(name) = LOWER(?)', [$name]);
+        if ($existing) {
+            return (int) $existing['id'];
+        }
+        return Connection::insert('INSERT INTO expense_categories (name, active) VALUES (?, 1)', [mb_substr($name, 0, 80)]);
+    }
+
+    public function openCash(): ?array
+    {
+        return Connection::one("SELECT * FROM cash_sessions WHERE status = 'aberto' ORDER BY id DESC LIMIT 1");
+    }
+
+    public function cashMovement(array $session): array
+    {
+        $methodId = (int) Connection::value("SELECT id FROM payment_methods WHERE name = 'Dinheiro'");
+        $opened = (string) $session['opened_at'];
+        $received = $methodId > 0 ? (int) Connection::value(
+            "SELECT COALESCE(SUM(amount_cents), 0) FROM payments WHERE status = 'confirmado' AND method_id = ? AND COALESCE(paid_at, created_at) >= ?",
+            [$methodId, $opened]
+        ) : 0;
+        $spent = $methodId > 0 ? (int) Connection::value(
+            "SELECT COALESCE(SUM(amount_cents), 0) FROM expenses WHERE deleted_at IS NULL AND method_id = ? AND created_at >= ?",
+            [$methodId, $opened]
+        ) : 0;
+        return [
+            'in' => $received,
+            'out' => $spent,
+            'expected' => (int) $session['opening_cents'] + $received - $spent,
+        ];
+    }
+
+    public function openRegister(int $amount, int $userId, string $note): void
+    {
+        if ($amount < 0) {
+            throw new ValidationException(['opening_amount' => 'O fundo de caixa não pode ser negativo.']);
+        }
+        if ($this->openCash()) {
+            throw new ValidationException(['opening_amount' => 'Já existe um caixa aberto.']);
+        }
+        Connection::insert(
+            'INSERT INTO cash_sessions (status, opening_cents, opened_at, opened_by, note) VALUES (?, ?, ?, ?, ?)',
+            ['aberto', $amount, now(), $userId, blank_to_null($note)]
+        );
+        activity('caixa', 'Caixa aberto com fundo de ' . money($amount), 'cash_session', null);
+    }
+
+    public function closeRegister(int $counted, int $userId, string $note): void
+    {
+        $session = $this->openCash();
+        if (!$session) {
+            throw new ValidationException(['counted_amount' => 'Não há caixa aberto.']);
+        }
+        if ($counted < 0) {
+            throw new ValidationException(['counted_amount' => 'Informe o valor contado no caixa.']);
+        }
+        $movement = $this->cashMovement($session);
+        Connection::run(
+            "UPDATE cash_sessions SET status = 'fechado', cash_in_cents = ?, cash_out_cents = ?, expected_cents = ?, counted_cents = ?, closed_at = ?, closed_by = ?, note = ? WHERE id = ?",
+            [$movement['in'], $movement['out'], $movement['expected'], $counted, now(), $userId, blank_to_null($note), (int) $session['id']]
+        );
+        activity('caixa', 'Caixa fechado. Contado ' . money($counted) . ', esperado ' . money($movement['expected']), 'cash_session', (int) $session['id']);
     }
 }

@@ -6,6 +6,8 @@ A Vercel não executa PHP nativamente. Este projeto usa o runtime comunitário `
 
 A função está configurada com 1024 MB e 60 segundos. A geração de PDF usa Dompdf com cache de fonte em `/tmp`, porque o diretório do projeto fica somente leitura.
 
+O painel responde na raiz do domínio. O aplicativo do cliente responde em `/app`, no mesmo projeto, e usa os arquivos de `cliente/public`. A raiz do projeto na Vercel precisa ser a pasta do repositório, onde está o `vercel.json`. Não use a pasta `cliente` como raiz: o aplicativo depende do `bootstrap` e do `vendor` da raiz.
+
 ## Banco e arquivos
 
 Use MySQL/MariaDB externo **ou** PostgreSQL (Supabase). Com a variável `VERCEL` presente, o sistema recusa SQLite.
@@ -39,6 +41,7 @@ No projeto da Vercel, em Settings → Environment Variables, preencha no mínimo
 - `CRON_SECRET` com outro valor longo e aleatório
 - `SEED_DEMO=0`
 - `STORAGE_DRIVER=database`
+- `MAPBOX_TOKEN` com o token público (`pk.*`) do Mapbox — mapa de Rastreio e trajeto nos PDFs da reserva
 
 Não defina `ADMIN_PASSWORD` permanente no painel da Vercel depois da instalação. A senha inicial é informada na tela `/instalar` e não volta a ser exibida.
 
@@ -61,7 +64,7 @@ A redefinição emergencial usa `POST /emergencia/senha` com o token `EMERGENCY_
 
 ## Tarefa agendada
 
-O plano Hobby da Vercel executa cron uma vez por dia. A rota `/api/cron/alertas` está marcada para 12:00 UTC e exige o cabeçalho `Authorization: Bearer CRON_SECRET`. Ela envia alertas que já estejam na fila, remove sessões vencidas e limpa tentativas de login antigas. Os indicadores do painel não dependem dessa tarefa: eles são calculados na consulta.
+O plano Hobby da Vercel executa cron uma vez por dia. O agendamento chama `/api/cron.php` às 12:00 UTC. Essa função executa o mesmo tratamento de `/api/cron/alertas` e exige o cabeçalho `Authorization: Bearer CRON_SECRET`. Com a variável `CRON_SECRET` definida no projeto, a Vercel envia esse cabeçalho. A tarefa envia alertas que já estejam na fila, remove sessões vencidas e limpa tentativas de login antigas. Os indicadores do painel não dependem dessa tarefa: eles são calculados na consulta.
 
 ## Limitações
 

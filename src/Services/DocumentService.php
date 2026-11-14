@@ -134,6 +134,18 @@ final class DocumentService
         ], $userId, 'relatorio', ['tabela']);
     }
 
+    public function previewReservation(string $type, int $reservationId): string
+    {
+        if (!isset(DocumentTemplates::all()[$type])) {
+            throw new NotFoundException('Documento não encontrado.');
+        }
+        $reservation = (new ReservationService($this->clientsWithoutLoop(), new AvailabilityService(), new FinanceService(), $this))->find($reservationId);
+        if (!$reservation) {
+            throw new NotFoundException('Reserva não encontrada.');
+        }
+        return $this->composeHtml($type, $this->reservationTokens($reservation));
+    }
+
     public function findByPublicId(string $publicId): ?array
     {
         return Connection::one('SELECT * FROM documents WHERE public_id = ?', [$publicId]);
@@ -177,7 +189,21 @@ final class DocumentService
             $paymentRows .= '<tr><td>' . e(date_br((string) $payment['paid_at'])) . '</td><td>' . e(money((int) $payment['amount_cents'])) . '</td></tr>';
         }
         $assignee = Connection::value('SELECT name FROM users WHERE id = ?', [(int) $reservation['assigned_user_id']]);
-        return $this->companyTokens() + [
+        $modalitySlugs = Connection::all(
+            'SELECT m.slug FROM reservation_items ri JOIN modalities m ON m.id = ri.modality_id WHERE ri.reservation_id = ? AND m.type = ? GROUP BY m.slug ORDER BY MIN(ri.id)',
+            [(int) $reservation['id'], 'experiencia']
+        );
+        $mapa = '';
+        $mapbox = new MapboxService();
+        $withMap = true;
+        foreach ($modalitySlugs as $modality) {
+            $block = $mapbox->reservationMapHtml((string) $modality['slug'], $withMap);
+            if ($withMap && str_contains($block, '<img')) {
+                $withMap = false;
+            }
+            $mapa .= $block;
+        }
+        $tokens = $this->companyTokens() + [
             'codigo' => (string) $reservation['code'],
             'status_operacional' => Statuses::label('operational', (string) $reservation['operational_status']),
             'status_financeiro' => Statuses::label('financial', (string) $reservation['financial_status']),
@@ -208,16 +234,69 @@ final class DocumentService
             'pagamentos' => $paymentRows === '' ? '<p>Nenhum pagamento confirmado.</p>' : '<table><tr><th>Data</th><th>Valor</th></tr>' . $paymentRows . '</table>',
             'politica' => (string) Settings::get('cancellation_policy', ''),
             'endereco' => trim((string) Settings::get('company_address', '') . ' - ' . (string) Settings::get('company_city', '')),
+            'mapa_rota' => $mapa,
+            'assinatura_bloco' => $this->signatureBlockHtml(),
         ];
+        $tokens['doc_kind'] = 'reservation';
+        return $tokens;
     }
 
     private function companyTokens(): array
     {
+        $address = trim(implode(', ', array_filter([
+            (string) Settings::get('company_address', ''),
+            trim((string) Settings::get('company_city', '') . '/' . (string) Settings::get('company_state', ''), '/'),
+            (string) Settings::get('company_zip', ''),
+        ])));
         return [
             'empresa' => (string) Settings::get('company_name', 'Drive Xperience'),
+            'empresa_documento' => (string) Settings::get('company_document', ''),
             'telefone_empresa' => (string) Settings::get('company_phone', ''),
+            'email_empresa' => (string) Settings::get('company_email', ''),
+            'site_empresa' => (string) Settings::get('company_website', ''),
+            'empresa_endereco' => $address,
+            'logo_html' => $this->embeddedImageHtml((int) Settings::get('company_logo_file_id', 0), 'Logo', 120, 56),
+            'assinatura_html' => $this->embeddedImageHtml((int) Settings::get('company_signature_file_id', 0), 'Assinatura', 220, 70),
             'emissao' => date('d/m/Y H:i'),
+            'doc_kind' => 'generic',
         ];
+    }
+
+    private function signatureBlockHtml(): string
+    {
+        $sign = $this->embeddedImageHtml((int) Settings::get('company_signature_file_id', 0), 'Assinatura digital', 220, 70);
+        $company = e((string) Settings::get('company_name', 'Drive Xperience'));
+        $doc = e((string) Settings::get('company_document', ''));
+        $html = '<div class="sign-block"><h2>Assinatura</h2>';
+        $html .= '<p>Documento emitido com a assinatura digital cadastrada pela empresa.</p>';
+        if ($sign !== '') {
+            $html .= '<p class="sign-img">' . $sign . '</p>';
+        } else {
+            $html .= '<p class="sign-line">________________________________</p>';
+        }
+        $html .= '<p><strong>' . $company . '</strong>';
+        if ($doc !== '') {
+            $html .= '<br>CNPJ/Documento: ' . $doc;
+        }
+        $html .= '</p></div>';
+        return $html;
+    }
+
+    private function embeddedImageHtml(int $fileId, string $alt, int $maxWidth, int $maxHeight): string
+    {
+        if ($fileId <= 0) {
+            return '';
+        }
+        $file = Connection::one('SELECT mime, content FROM stored_files WHERE id = ?', [$fileId]);
+        if (!$file || $file['content'] === null || $file['content'] === '') {
+            return '';
+        }
+        $mime = (string) $file['mime'];
+        if (!in_array($mime, ['image/jpeg', 'image/png'], true)) {
+            return '';
+        }
+        $src = 'data:' . $mime . ';base64,' . base64_encode((string) $file['content']);
+        return '<img src="' . $src . '" alt="' . e($alt) . '" style="max-width:' . $maxWidth . 'px;max-height:' . $maxHeight . 'px;">';
     }
 
     private function store(string $type, string $title, array $tokens, array $links, int $userId, string $name, array $raw = ['pagamentos', 'tabela']): array
@@ -236,7 +315,7 @@ final class DocumentService
             $templateVersion = (int) $template['version'];
             $templateName = (string) $template['name'];
         }
-        $html = $this->render($templateName, $this->applyTokens($body, $tokens, $raw), $tokens);
+        $html = $this->composeHtml($type, $tokens, $raw);
         $binary = $this->pdf($html);
         $scope = 'type = ?';
         $params = [$type];
@@ -266,6 +345,39 @@ final class DocumentService
         return ['id' => $id, 'public_id' => $publicId, 'version' => $version];
     }
 
+    private function composeHtml(string $type, array $tokens, array $raw = ['pagamentos', 'tabela']): string
+    {
+        $template = Connection::one('SELECT * FROM document_templates WHERE type = ?', [$type]);
+        if (!$template) {
+            $defaults = DocumentTemplates::all()[$type] ?? null;
+            if (!$defaults) {
+                throw new RuntimeException('Modelo de documento não encontrado.');
+            }
+            $body = $defaults[1];
+            $templateName = $defaults[0];
+        } else {
+            $body = (string) $template['body'];
+            $templateName = (string) $template['name'];
+        }
+        $rawTokens = array_values(array_unique(array_merge($raw, ['pagamentos', 'tabela', 'mapa_rota', 'assinatura_bloco', 'logo_html', 'assinatura_html'])));
+        $isReservationDoc = ($tokens['doc_kind'] ?? '') === 'reservation'
+            || in_array($type, ['ficha_reserva', 'comprovante_agendamento', 'ordem_servico', 'termo_responsabilidade'], true);
+        if ($isReservationDoc) {
+            if (!empty($tokens['mapa_rota']) && !str_contains($body, '{{mapa_rota}}')) {
+                $body .= "\n{{mapa_rota}}";
+            }
+            if (!empty($tokens['assinatura_bloco']) && !str_contains($body, '{{assinatura_bloco}}')) {
+                $body .= "\n{{assinatura_bloco}}";
+            }
+        }
+        return $this->render($templateName, $this->applyTokens($body, $tokens, $rawTokens), $tokens);
+    }
+
+    public function reservationPdf(string $type, int $reservationId): string
+    {
+        return $this->pdf($this->previewReservation($type, $reservationId));
+    }
+
     private function applyTokens(string $body, array $tokens, array $raw): string
     {
         foreach ($tokens as $key => $value) {
@@ -284,18 +396,52 @@ final class DocumentService
     {
         $company = e((string) ($tokens['empresa'] ?? 'Drive Xperience'));
         $issued = e((string) ($tokens['emissao'] ?? date('d/m/Y H:i')));
+        $document = e((string) ($tokens['empresa_documento'] ?? ''));
+        $phone = e((string) ($tokens['telefone_empresa'] ?? ''));
+        $email = e((string) ($tokens['email_empresa'] ?? ''));
+        $site = e((string) ($tokens['site_empresa'] ?? ''));
+        $address = e((string) ($tokens['empresa_endereco'] ?? ''));
+        $logo = (string) ($tokens['logo_html'] ?? '');
+        $meta = [];
+        if ($document !== '') {
+            $meta[] = 'CNPJ/Documento: ' . $document;
+        }
+        if ($address !== '') {
+            $meta[] = $address;
+        }
+        if ($phone !== '') {
+            $meta[] = 'Tel. ' . $phone;
+        }
+        if ($email !== '') {
+            $meta[] = $email;
+        }
+        if ($site !== '') {
+            $meta[] = $site;
+        }
+        $cell = 'background-color:#071833;color:#ffffff;border:0;padding:16px 18px;vertical-align:middle;';
+        $header = '<table class="doc-head" width="100%" cellpadding="0" cellspacing="0" bgcolor="#071833" style="width:100%;border-collapse:separate;border-spacing:0;background-color:#071833;margin:0 0 16px;"><tr>';
+        if ($logo !== '') {
+            $header .= '<td class="head-logo" width="150" bgcolor="#071833" style="' . $cell . 'width:150px;"><div class="logo-pad">' . $logo . '</div></td>';
+        }
+        $header .= '<td class="head-copy" bgcolor="#071833" style="' . $cell . '"><div class="brand" style="font-size:18px;color:#ffffff;font-weight:bold;">' . $company . '</div>'
+            . '<div class="sub" style="color:#9EC0EA;font-size:10px;margin-top:2px;">Experiências com supercarros · Balneário Camboriú</div>'
+            . ($meta !== [] ? '<div class="head-meta" style="color:#D5DEE8;font-size:10px;margin-top:6px;line-height:1.45;">' . implode('<br>', $meta) . '</div>' : '')
+            . '</td></tr></table>';
         return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><style>
             body{font-family:DejaVu Sans,sans-serif;color:#122033;font-size:12px}
-            header{border-bottom:3px solid #0E6EBE;padding-bottom:8px;margin-bottom:16px}
-            .brand{font-size:18px;color:#071833;font-weight:bold;letter-spacing:.4px}
-            .sub{color:#0E6EBE;font-size:10px}
             h1{font-size:16px;margin:12px 0}
             h2{font-size:13px}
             table{width:100%;border-collapse:collapse;margin:8px 0 14px}
             th,td{border:1px solid #D5DEE8;padding:6px 8px;text-align:left;vertical-align:top}
-            th{background:#F3F6FA;width:22%}
+            th{background-color:#F3F6FA;width:22%}
+            table.doc-head,table.doc-head tr,table.doc-head td{background-color:#071833;color:#ffffff;border:none}
+            table.doc-head{border-collapse:separate;border-spacing:0;margin:0 0 16px}
+            .logo-pad{background-color:#ffffff;padding:8px}
+            .sign-block{margin-top:28px;padding-top:12px;border-top:1px solid #D5DEE8}
+            .sign-img{margin:10px 0}
+            .sign-line{margin:28px 0 8px;letter-spacing:1px}
             footer{position:fixed;bottom:-8px;left:0;right:0;font-size:9px;color:#5C6B80;border-top:1px solid #D5DEE8;padding-top:4px}
-        </style></head><body><header><div class="brand">' . $company . '</div><div class="sub">Experiências com supercarros · Balneário Camboriú</div></header><h1>' . e($title) . '</h1>' . $body . '<footer>' . $company . ' · Emitido em ' . $issued . ' · Documento interno protegido por autenticação</footer></body></html>';
+        </style></head><body>' . $header . '<h1>' . e($title) . '</h1>' . $body . '<footer>' . $company . ' · Emitido em ' . $issued . ' · Documento interno protegido por autenticação</footer></body></html>';
     }
 
     private function pdf(string $html): string

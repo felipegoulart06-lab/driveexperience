@@ -39,7 +39,12 @@ final class PhotoController
         if (!$item) {
             throw new NotFoundException();
         }
-        view('photos/show', ['title' => $item['package_name'] ?: 'Produção', 'item' => $item, 'users' => Connection::all('SELECT id, name FROM users WHERE active = 1 ORDER BY name')]);
+        view('photos/show', [
+            'title' => $item['package_name'] ?: 'Produção',
+            'item' => $item,
+            'users' => Connection::all('SELECT id, name FROM users WHERE active = 1 ORDER BY name'),
+            'documents' => Connection::all('SELECT public_id, type, version, issued_at FROM documents WHERE production_id = ? AND redacted_at IS NULL ORDER BY id DESC', [(int) $id]),
+        ]);
     }
 
     public function update(Request $request, string $id): void
@@ -56,7 +61,10 @@ final class PhotoController
 
     public function document(Request $request, string $id, string $key): void
     {
-        (new DocumentService())->issueProduction($key, (int) $id, (int) Auth::id());
-        redirect_with('/fotos/' . $id, 'ok', 'Documento de produção emitido.');
+        if (!in_array($key, ['ficha_producao', 'comprovante_entrega'], true)) {
+            throw new NotFoundException();
+        }
+        $issued = (new DocumentService())->issueProduction($key, (int) $id, (int) Auth::id());
+        redirect('/documentos/' . $issued['public_id']);
     }
 }

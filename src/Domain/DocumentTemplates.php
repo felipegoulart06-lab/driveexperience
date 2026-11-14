@@ -39,6 +39,7 @@ final class DocumentTemplates
 <tr><th>Duração</th><td>{{duracao}}</td><th>Participantes</th><td>{{participantes}}</td></tr>
 <tr><th>Responsável</th><td colspan="3">{{responsavel}}</td></tr>
 </table>
+{{mapa_rota}}
 <h2>Valores</h2>
 <table>
 <tr><th>Original</th><td>{{valor_original}}</td><th>Desconto</th><td>{{desconto}}</td></tr>
@@ -63,6 +64,7 @@ HTML;
 <tr><th>Participantes</th><td>{{participantes}}</td></tr>
 <tr><th>Local de referência</th><td>{{endereco}}</td></tr>
 </table>
+{{mapa_rota}}
 <p>Chegue com antecedência e leve um documento de identificação. Em caso de imprevisto, fale com a equipe pelo telefone {{telefone_empresa}}.</p>
 HTML;
     }
@@ -78,6 +80,7 @@ HTML;
 <tr><th>Início</th><td>{{data}} {{horario}}</td><th>Duração</th><td>{{duracao}}</td></tr>
 <tr><th>Responsável</th><td colspan="3">{{responsavel}}</td></tr>
 </table>
+{{mapa_rota}}
 <p><strong>Observações operacionais</strong><br>{{observacoes}}</p>
 <p>Confira o veículo, o horário e a identificação do cliente antes de iniciar.</p>
 HTML;

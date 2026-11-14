@@ -7,6 +7,9 @@ namespace App\Auth;
 use App\Database\Connection;
 use App\Http\Request;
 use App\Http\Session;
+use App\Security\Crypto;
+use App\Security\Totp;
+use App\Services\TwoFactor;
 use App\Support\AuthException;
 use App\Support\ValidationException;
 
@@ -113,11 +116,87 @@ final class Auth
         if (password_needs_rehash($hash, PASSWORD_DEFAULT)) {
             Connection::run('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), (int) $user['id']]);
         }
-        self::login((int) $user['id']);
-        Connection::run('DELETE FROM login_attempts WHERE email = ? OR ip = ?', [$email, $ip]);
-        Connection::run('UPDATE users SET last_login_at = ?, failed_logins = 0 WHERE id = ?', [now(), (int) $user['id']]);
-        audit('login', 'user', (int) $user['id']);
+        Session::forget('user_id');
+        self::$resolved = false;
+        self::$user = null;
+        Session::regenerate();
+        $userId = (int) $user['id'];
+        $enroll = '';
+        if (!TwoFactor::has($userId)) {
+            $enroll = Crypto::encrypt(Totp::secret());
+        }
+        Session::put('pending_2fa', [
+            'user_id' => $userId,
+            'until' => time() + 600,
+            'enroll' => $enroll,
+            'tries' => 0,
+        ]);
         return true;
+    }
+
+    public static function pendingTwoFactor(): ?array
+    {
+        $pending = Session::get('pending_2fa');
+        if (!is_array($pending) || (int) ($pending['until'] ?? 0) < time() || (int) ($pending['user_id'] ?? 0) <= 0) {
+            if (is_array($pending)) {
+                Session::forget('pending_2fa');
+            }
+            return null;
+        }
+        return $pending;
+    }
+
+    public static function cancelPending(): void
+    {
+        Session::forget('pending_2fa');
+    }
+
+    public static function confirmPending(string $code): void
+    {
+        $pending = self::pendingTwoFactor();
+        if ($pending === null) {
+            throw new ValidationException(['email' => 'A confirmação expirou. Entre novamente com e-mail e senha.']);
+        }
+        $userId = (int) $pending['user_id'];
+        $user = Connection::one('SELECT id, email, active FROM users WHERE id = ? AND deleted_at IS NULL', [$userId]);
+        if (!$user || !(int) $user['active']) {
+            self::cancelPending();
+            throw new ValidationException(['email' => 'Esta conta não pode entrar.']);
+        }
+        $enrolling = (string) ($pending['enroll'] ?? '') !== '';
+        $secret = '';
+        $valid = false;
+        if ($enrolling) {
+            try {
+                $secret = Crypto::decrypt((string) $pending['enroll']);
+            } catch (\Throwable) {
+                $secret = '';
+            }
+            $valid = $secret !== '' && Totp::verify($secret, $code);
+        } else {
+            $valid = TwoFactor::check($userId, $code);
+        }
+        if (!$valid) {
+            $pending['tries'] = (int) ($pending['tries'] ?? 0) + 1;
+            Connection::run(
+                'INSERT INTO login_attempts (email, ip, created_at) VALUES (?, ?, ?)',
+                [(string) $user['email'], request_ip(), now()]
+            );
+            if ($pending['tries'] >= 5) {
+                self::cancelPending();
+                throw new ValidationException(['email' => 'Muitas tentativas do 2FA. Entre novamente com e-mail e senha.']);
+            }
+            Session::put('pending_2fa', $pending);
+            throw new ValidationException(['code' => 'Código do 2FA inválido.']);
+        }
+        if ($enrolling) {
+            TwoFactor::save($userId, $secret);
+        }
+        self::cancelPending();
+        self::login($userId);
+        Connection::run('DELETE FROM login_attempts WHERE email = ?', [(string) $user['email']]);
+        Connection::run('UPDATE users SET last_login_at = ?, failed_logins = 0 WHERE id = ?', [now(), $userId]);
+        audit('login', 'user', $userId);
     }
 
     public static function login(int $userId): void

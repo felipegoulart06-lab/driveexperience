@@ -25,6 +25,10 @@ final class NotificationService
             return env('SMTP_HOST') !== null && env('SMTP_FROM') !== null;
         }
         if ($channel === 'whatsapp') {
+            $link = new WhatsAppLink();
+            if ($link->credentials()['token'] !== '') {
+                return $link->ready();
+            }
             return $this->whatsappBase() !== '' && env('WHATSAPP_TOKEN') !== null;
         }
         return false;
@@ -189,6 +193,158 @@ final class NotificationService
         activity('mensagem', 'WhatsApp enviado para a reserva ' . $row['code'], 'reservation', $id);
     }
 
+    public function sendClosingCarousel(int $id): void
+    {
+        $row = Connection::one(
+            'SELECT r.code, r.scheduled_date, r.completed_at, c.full_name, c.phone, c.whatsapp
+             FROM reservations r JOIN clients c ON c.id = r.client_id
+             WHERE r.id = ? AND r.deleted_at IS NULL',
+            [$id]
+        );
+        if (!$row) {
+            throw new NotFoundException('Reserva não encontrada.');
+        }
+        $number = whatsapp_number($row['phone'] ?? null, $row['whatsapp'] ?? null);
+        if ($number === null) {
+            throw new ValidationException(['phone' => 'Informe o WhatsApp do cliente. O encerramento só conclui depois de enviar os cards.']);
+        }
+        if (!$this->configured('whatsapp')) {
+            throw new ValidationException(['message' => 'Conecte o WhatsApp da empresa em Configurações. Sem isso a reserva não pode ser encerrada.']);
+        }
+        $name = trim((string) $row['full_name']);
+        $first = preg_split('/\s+/u', $name)[0] ?: 'Cliente';
+        $rawDate = (string) ($row['scheduled_date'] ?: substr((string) $row['completed_at'], 0, 10));
+        $when = $rawDate !== '' ? date_br($rawDate) : date_br(today());
+        $google = trim((string) Settings::get('google_review_url', ''));
+        if (!preg_match('#^https://#', $google)) {
+            $google = 'https://www.google.com/search?q=' . rawurlencode(trim((string) Settings::get('company_name', 'Drive Xperience') . ' ' . (string) Settings::get('company_city', 'Balneário Camboriú') . ' avaliação'));
+        }
+        $play = trim((string) Settings::get('play_store_url', ''));
+        $app = absolute_url('/aplicativo');
+        $playUrl = preg_match('#^https://#', $play) ? $play : $app . '#baixar';
+        $referral = absolute_url('/indicacao');
+        $payload = [
+            'number' => $number,
+            'text' => $first . ', seu atendimento na Drive Xperience foi encerrado. Deslize os três cards.',
+            'carousel' => [
+                [
+                    'text' => '*' . $first . ', avalie no Google*' . "\n" . 'Seu atendimento em ' . $when . ' merece uma avaliação. Leva menos de um minuto.',
+                    'image' => absolute_url('/assets/img/cards/avaliar.png'),
+                    'buttons' => [
+                        ['id' => $google, 'text' => 'Avaliar no Google', 'type' => 'URL'],
+                        ['id' => 'Finalizar atendimento', 'text' => 'Finalizar agora', 'type' => 'REPLY'],
+                    ],
+                ],
+                [
+                    'text' => '*O aplicativo*' . "\n" . 'Acompanhe experiências, fotos e novidades. O lançamento é na Play Store.',
+                    'image' => absolute_url('/assets/img/cards/aplicativo.png'),
+                    'buttons' => [
+                        ['id' => $playUrl, 'text' => 'Abrir a Play Store', 'type' => 'URL'],
+                        ['id' => $app . '#recursos', 'text' => 'Ver os recursos', 'type' => 'URL'],
+                    ],
+                ],
+                [
+                    'text' => '*Indique e ganhe*' . "\n" . 'Cada experiência, carona e pacote de fotos tem uma comissão. Veja a tabela completa.',
+                    'image' => absolute_url('/assets/img/cards/indicacao.png'),
+                    'buttons' => [
+                        ['id' => $referral . '#comissoes', 'text' => 'Ver comissões', 'type' => 'URL'],
+                        ['id' => $referral . '#indicar', 'text' => 'Quero indicar', 'type' => 'URL'],
+                    ],
+                ],
+            ],
+            'track_source' => 'reserva',
+            'track_id' => (string) $row['code'],
+        ];
+        try {
+            $this->postWhatsapp('/send/carousel', $payload);
+        } catch (\RuntimeException $exception) {
+            $this->store('whatsapp', $number, 'encerramento_cards', ['body' => $payload['text']], 'erro', $exception->getMessage(), 'reservation', $id);
+            throw new ValidationException(['message' => 'A reserva não foi encerrada. O WhatsApp recusou os cards: ' . $exception->getMessage()]);
+        }
+        $this->store('whatsapp', $number, 'encerramento_cards', ['body' => $payload['text']], 'enviada', null, 'reservation', $id);
+        activity('mensagem', 'Cards de encerramento enviados na reserva ' . $row['code'], 'reservation', $id);
+    }
+
+    public function sendAppointmentReceipt(int $id): ?string
+    {
+        if ((string) Settings::get('wa_send_receipt', '1') === '0') {
+            return null;
+        }
+        if (!(new WhatsAppLink())->ready()) {
+            return null;
+        }
+        $already = Connection::value(
+            "SELECT id FROM notifications WHERE channel = 'whatsapp' AND template = 'comprovante_agendamento' AND status = 'enviada' AND related_type = 'reservation' AND related_id = ?",
+            [$id]
+        );
+        if ($already) {
+            return null;
+        }
+        $row = Connection::one(
+            'SELECT r.code, r.scheduled_date, r.start_time, c.full_name, c.phone, c.whatsapp, v.brand, v.model,
+                    (SELECT description FROM reservation_items WHERE reservation_id = r.id ORDER BY id LIMIT 1) AS experience
+             FROM reservations r
+             JOIN clients c ON c.id = r.client_id
+             LEFT JOIN vehicles v ON v.id = r.vehicle_id
+             WHERE r.id = ? AND r.deleted_at IS NULL',
+            [$id]
+        );
+        if (!$row) {
+            return 'O comprovante não foi enviado: a reserva não foi encontrada.';
+        }
+        $number = whatsapp_number($row['phone'] ?? null, $row['whatsapp'] ?? null);
+        if ($number === null) {
+            return 'O comprovante não foi enviado: o cliente não tem WhatsApp.';
+        }
+        try {
+            $number = (new WhatsAppLink())->deliveryNumber($number);
+        } catch (\RuntimeException $exception) {
+            return 'O comprovante não foi enviado: ' . $exception->getMessage();
+        }
+        $name = trim((string) $row['full_name']);
+        $first = preg_split('/\s+/u', $name)[0] ?: 'Cliente';
+        $when = trim(date_br((string) $row['scheduled_date']) . ' às ' . substr((string) $row['start_time'], 0, 5));
+        $vehicle = trim((string) ($row['brand'] ?? '') . ' ' . (string) ($row['model'] ?? ''));
+        $experience = trim((string) ($row['experience'] ?? ''));
+        $lines = ['*' . $first . ', seu agendamento está confirmado*', '', 'Reserva ' . $row['code']];
+        if ($experience !== '') {
+            $lines[] = $experience;
+        }
+        if ($vehicle !== '') {
+            $lines[] = $vehicle;
+        }
+        if (trim($when) !== 'às') {
+            $lines[] = $when;
+        }
+        $lines[] = '';
+        $lines[] = 'O comprovante em PDF segue nesta conversa.';
+        $text = implode("\n", $lines);
+        $trace = ['track_source' => 'reserva', 'track_id' => (string) $row['code']];
+        try {
+            $this->postWhatsapp('/send/menu', [
+                'number' => $number,
+                'type' => 'button',
+                'text' => $text,
+                'choices' => ['Recebi|recebi'],
+            ] + $trace);
+            $pdf = (new DocumentService())->reservationPdf('comprovante_agendamento', $id);
+            $this->postWhatsapp('/send/media', [
+                'number' => $number,
+                'type' => 'document',
+                'file' => 'data:application/pdf;base64,' . base64_encode($pdf),
+                'docName' => $row['code'] . '-comprovante-agendamento.pdf',
+                'text' => 'Comprovante de agendamento ' . $row['code'],
+                'mimetype' => 'application/pdf',
+            ] + $trace, 60);
+        } catch (\Throwable $exception) {
+            $this->store('whatsapp', $number, 'comprovante_agendamento', ['body' => $text], 'erro', $exception->getMessage(), 'reservation', $id);
+            return 'O comprovante não foi enviado no WhatsApp: ' . $exception->getMessage();
+        }
+        $this->store('whatsapp', $number, 'comprovante_agendamento', ['body' => $text], 'enviada', null, 'reservation', $id);
+        activity('mensagem', 'Comprovante de agendamento enviado na reserva ' . $row['code'], 'reservation', $id);
+        return null;
+    }
+
     private function buttonChoices(array $buttons, array $map): array
     {
         $choices = [];
@@ -239,10 +395,15 @@ final class NotificationService
         return $base;
     }
 
-    private function postWhatsapp(string $path, array $body): void
+    private function postWhatsapp(string $path, array $body, int $timeout = 25): void
     {
-        $base = $this->whatsappBase();
-        $token = (string) env('WHATSAPP_TOKEN', '');
+        $link = new WhatsAppLink();
+        $stored = $link->credentials();
+        $base = $stored['base'] !== '' ? $stored['base'] : $this->whatsappBase();
+        $token = $stored['token'] !== '' ? $stored['token'] : (string) env('WHATSAPP_TOKEN', '');
+        if ($stored['token'] !== '' && !$link->ready()) {
+            throw new \RuntimeException('O WhatsApp da empresa está desconectado. Gere o QR Code em Configurações.');
+        }
         if ($base === '' || $token === '' || !function_exists('curl_init')) {
             throw new \RuntimeException('A conexão de WhatsApp não está configurada. Nenhuma mensagem é enviada.');
         }
@@ -252,8 +413,9 @@ final class NotificationService
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json', 'token: ' . $token],
             CURLOPT_POSTFIELDS => json_encode($body, JSON_UNESCAPED_UNICODE),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 15,
+            CURLOPT_TIMEOUT => $timeout,
         ]);
+        curl_apply_ca($channel);
         $response = curl_exec($channel);
         $status = (int) curl_getinfo($channel, CURLINFO_RESPONSE_CODE);
         curl_close($channel);
@@ -267,7 +429,10 @@ final class NotificationService
         $data = json_decode($response, true);
         $message = '';
         if (is_array($data)) {
-            $message = trim((string) ($data['message_ptbr'] ?? $data['provider_message_ptbr'] ?? ''));
+            $message = trim((string) ($data['message_ptbr'] ?? $data['provider_message_ptbr'] ?? $data['error'] ?? $data['message'] ?? ''));
+        }
+        if (preg_match('/not on whatsapp/i', $message)) {
+            return 'Este número não está no WhatsApp.';
         }
         $message = trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/uazapi/i', '', $message)));
         if ($message !== '') {

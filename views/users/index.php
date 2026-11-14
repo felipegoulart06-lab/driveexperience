@@ -41,6 +41,12 @@ foreach ($permissions as $permission) {
     $grouped[(string) $permission['module']][] = $permission;
 }
 ?>
+<?php $creating = isset($_GET['novo']) && !$editing; ?>
+<?php if (!$creating && !$editing): ?>
+<div class="toolbar">
+    <a class="button-link" href="/usuarios?novo=1">Novo usuário</a>
+</div>
+<?php endif; ?>
 <article class="card table-wrap">
     <table class="users-table">
         <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th></th></tr></thead>
@@ -71,6 +77,7 @@ foreach ($permissions as $permission) {
     <div class="full user-actions">
         <button type="submit">Salvar dados</button>
         <?php if (!$showPassword): ?><a class="ghost sheet-action" href="/usuarios?editar=<?= (int) $editing['id'] ?>&senha=1">Trocar senha</a><?php endif; ?>
+        <a class="ghost sheet-action" href="/usuarios">Cancelar</a>
     </div>
 </form>
 <?php if ($showPassword): ?>
@@ -87,52 +94,79 @@ foreach ($permissions as $permission) {
 </form>
 <?php endif; ?>
 <?php endif; ?>
+<?php if ($creating): ?>
 <form method="post" action="/usuarios" class="card form-grid" autocomplete="off">
     <?= csrf_field() ?>
     <h2 class="full">Novo usuário</h2>
     <div class="field"><label>Nome</label><input name="name" required></div>
     <div class="field"><label>E-mail</label><input name="email" inputmode="email" autocomplete="off" required></div>
-    <div class="field"><label>Perfil</label><select name="role_id"><?php foreach ($roles as $role): ?><option value="<?= (int) $role['id'] ?>" <?= $role['slug'] === 'atendimento' ? 'selected' : '' ?>><?= e($role['name']) ?></option><?php endforeach; ?></select></div>
+    <div class="field"><label>Perfil</label><select name="role_id" data-role-pick><?php foreach ($roles as $role): ?><option value="<?= (int) $role['id'] ?>" <?= $role['slug'] === 'atendimento' ? 'selected' : '' ?>><?= e($role['name']) ?></option><?php endforeach; ?></select></div>
     <div class="field"><label>Senha</label><input type="password" name="password" autocomplete="new-password" required></div>
     <div class="field"><label>Confirmar senha</label><input type="password" name="password_confirmation" autocomplete="new-password" required></div>
-    <p class="full field-help">Mínimo de 12 caracteres, com letras e números.</p>
-    <div class="full"><button type="submit">Criar usuário</button></div>
-</form>
-<?php if ($currentRole): ?>
-<section class="card stack">
-    <h2>Permissões do perfil</h2>
-    <p class="field-help">O administrador mantém acesso completo e não aparece aqui. Salve um perfil por vez.</p>
-    <div class="role-tabs">
-        <?php foreach ($profiles as $role): ?>
-            <a class="<?= $role['slug'] === $currentRole['slug'] ? 'is-active' : '' ?>" href="/usuarios?perfil=<?= e($role['slug']) ?>"><?= e($role['name']) ?></a>
-        <?php endforeach; ?>
+    <p class="full field-help">Mínimo de 12 caracteres, com letras e números. Este funcionário também é o instrutor: ele entra no sistema pelo celular e conduz a experiência.</p>
+    <div class="full client-actions">
+        <button type="submit">Criar usuário</button>
+        <a class="ghost sheet-action" href="/usuarios">Cancelar</a>
     </div>
-    <p class="muted"><?= e((string) $currentRole['description']) ?></p>
-    <form method="post" action="/usuarios/perfis/<?= (int) $currentRole['id'] ?>">
-        <?= csrf_field() ?>
-        <?php foreach ($moduleNames as $module => $label): ?>
-            <?php if (empty($grouped[$module])) continue; ?>
-            <div class="perm-group">
-                <h3><?= e($label) ?></h3>
-                <div class="checks">
-                    <?php foreach ($grouped[$module] as $permission): ?>
-                        <label class="check"><input type="checkbox" name="permissions[]" value="<?= e($permission['slug']) ?>" <?= !empty($granted[(int) $currentRole['id']][(int) $permission['id']]) ? 'checked' : '' ?>> <?= e($permission['name']) ?></label>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        <?php endforeach; ?>
-        <?php foreach ($grouped as $module => $items): ?>
-            <?php if (isset($moduleNames[$module])) continue; ?>
-            <div class="perm-group">
-                <h3><?= e((string) $module) ?></h3>
-                <div class="checks">
-                    <?php foreach ($items as $permission): ?>
-                        <label class="check"><input type="checkbox" name="permissions[]" value="<?= e($permission['slug']) ?>" <?= !empty($granted[(int) $currentRole['id']][(int) $permission['id']]) ? 'checked' : '' ?>> <?= e($permission['name']) ?></label>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        <?php endforeach; ?>
-        <button type="submit">Salvar permissões de <?= e($currentRole['name']) ?></button>
-    </form>
+</form>
+<?php endif; ?>
+<?php
+$short = [
+    'dashboard.view' => 'Ver o painel',
+    'clients.view' => 'Ver clientes',
+    'clients.manage' => 'Cadastrar e editar clientes',
+    'clients.sensitive' => 'Ver CPF e dados sensíveis',
+    'clients.anonymize' => 'Apagar dados pessoais',
+    'reservations.view' => 'Ver reservas',
+    'reservations.manage' => 'Criar e alterar reservas',
+    'reservations.cancel' => 'Cancelar reservas',
+    'agenda.view' => 'Ver a agenda',
+    'agenda.manage' => 'Bloquear horários',
+    'vehicles.view' => 'Ver veículos',
+    'vehicles.manage' => 'Cadastrar e editar veículos',
+    'vehicles.sensitive' => 'Ver a placa',
+    'tracking.view' => 'Ver o mapa',
+    'tracking.manage' => 'Cadastrar tags',
+    'products.view' => 'Ver produtos',
+    'products.manage' => 'Cadastrar e editar produtos',
+    'photos.view' => 'Ver pacotes de fotos',
+    'photos.manage' => 'Vender e alterar fotos',
+    'finance.view' => 'Ver o financeiro',
+    'finance.manage' => 'Lançar pagamentos e despesas',
+    'documents.view' => 'Ver documentos',
+    'documents.issue' => 'Emitir PDF',
+    'reports.view' => 'Ver relatórios',
+    'reports.finance' => 'Ver relatórios financeiros',
+    'quotes.view' => 'Ver orçamentos',
+    'quotes.manage' => 'Emitir orçamentos',
+    'integrations.manage' => 'Configurar integrações',
+    'users.manage' => 'Criar usuários',
+];
+?>
+<?php if ($creating): ?>
+<section class="card stack" data-role-perms>
+    <h2>O que este perfil pode fazer</h2>
+    <p class="field-help">O administrador vê e altera tudo, inclusive os dados da empresa. O perfil escolhido acima define o acesso deste funcionário.</p>
+    <?php foreach ($profiles as $role): ?>
+        <ul class="perm-summary" data-role-panel="<?= (int) $role['id'] ?>"<?= $role['slug'] === 'atendimento' ? '' : ' hidden' ?>>
+            <?php foreach ($moduleNames as $module => $label): ?>
+                <?php
+                if ($module === 'configuracoes' || empty($grouped[$module])) {
+                    continue;
+                }
+                $allowed = [];
+                foreach ($grouped[$module] as $permission) {
+                    if (!empty($granted[(int) $role['id']][(int) $permission['id']])) {
+                        $allowed[] = $short[$permission['slug']] ?? (string) $permission['name'];
+                    }
+                }
+                ?>
+                <li>
+                    <strong><?= e($label) ?></strong>
+                    <span><?= $allowed === [] ? 'Sem acesso' : e(implode(' · ', $allowed)) ?></span>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endforeach; ?>
 </section>
 <?php endif; ?>

@@ -13,6 +13,7 @@ if ($uri !== '/' && is_file($file)) {
         'webp' => 'image/webp',
         'ico' => 'image/x-icon',
         'woff2' => 'font/woff2',
+        'html' => 'text/html; charset=utf-8',
     ];
     header('Content-Type: ' . ($types[pathinfo($file, PATHINFO_EXTENSION)] ?? 'application/octet-stream'));
     readfile($file);

@@ -19,7 +19,6 @@ $icons = [
     '/usuarios' => '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/>',
     '/configuracoes' => '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
     'sair' => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
-    'menu' => '<path d="M4 6h16M4 12h16M4 18h16"/>',
 ];
 $icon = static function (string $name) use ($icons): string {
     return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . ($icons[$name] ?? '') . '</svg>';
@@ -29,7 +28,7 @@ foreach (nav_items() as $item) {
     $indexed[$item[0]] = $item;
 }
 $groups = [
-    'Operação' => ['/', '/reservas', '/agenda', '/clientes', '/veiculos', '/rastreio'],
+    'Operação' => ['/agenda', '/', '/reservas', '/clientes', '/veiculos', '/rastreio'],
     'Comercial' => ['/orcamentos', '/produtos', '/promocoes-app', '/fotos'],
     'Gestão' => ['/financeiro', '/relatorios', '/documentos'],
     'Sistema' => ['/integracoes', '/usuarios', '/configuracoes'],
@@ -42,6 +41,8 @@ $headingClass = preg_match('/^(DX|ORC)-/', (string) ($title ?? '')) ? 'code' : '
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title) ?> · Drive Xperience</title>
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/assets/css/theme.css?v=<?= (int) filemtime(base_path('public/assets/css/theme.css')) ?>">
     <link rel="stylesheet" href="/assets/css/app.css?v=<?= (int) filemtime(base_path('public/assets/css/app.css')) ?>">
 </head>
@@ -52,7 +53,15 @@ $headingClass = preg_match('/^(DX|ORC)-/', (string) ($title ?? '')) ? 'code' : '
         <nav class="nav">
             <?php foreach ($groups as $group => $hrefs): ?>
                 <?php
-                $visible = array_values(array_filter($hrefs, static fn (string $href): bool => isset($indexed[$href]) && \App\Auth\Auth::can($indexed[$href][2])));
+                $visible = array_values(array_filter($hrefs, static function (string $href) use ($indexed): bool {
+                    if (!isset($indexed[$href]) || !\App\Auth\Auth::can($indexed[$href][2])) {
+                        return false;
+                    }
+                    if ($href === '/configuracoes' && (\App\Auth\Auth::user()['role_slug'] ?? '') !== 'administrador') {
+                        return false;
+                    }
+                    return true;
+                }));
                 if ($visible === []) {
                     continue;
                 }
@@ -74,17 +83,40 @@ $headingClass = preg_match('/^(DX|ORC)-/', (string) ($title ?? '')) ? 'code' : '
         <?php if (demo_enabled()): ?><div class="banner">Dados de demonstração carregados. Eles não representam clientes reais.</div><?php endif; ?>
         <div class="frame">
             <header class="page-head">
-                <button class="menu-button ghost" type="button" data-menu><?= $icon('menu') ?>Menu</button>
                 <h1 class="<?= e($headingClass) ?>"><?= e($title) ?></h1>
                 <div class="page-tools"></div>
             </header>
             <main class="content">
-                <?php if (!empty($flash)): ?><div class="flash <?= e($flash['type']) ?>"><?= e($flash['message']) ?></div><?php endif; ?>
+                <?php if (!empty($flash) && empty($flash['card'])): ?><div class="flash <?= e($flash['type']) ?>"><?= e($flash['message']) ?></div><?php endif; ?>
                 <?= $content ?>
             </main>
         </div>
     </section>
 </div>
+<?php if (!empty($flash['card'])): ?>
+    <?php $done = $flash['card']; ?>
+    <div class="done-layer" data-done>
+        <button type="button" class="done-backdrop" data-done-close aria-label="Fechar"></button>
+        <article class="done-card" role="status">
+            <header>
+                <p>Reserva concluída</p>
+                <strong><?= e((string) $done['code']) ?></strong>
+            </header>
+            <dl>
+                <div><dt>Cliente</dt><dd><?= e((string) $done['client']) ?></dd></div>
+                <div><dt>Experiência</dt><dd><?= e((string) $done['experience']) ?></dd></div>
+                <div><dt>Veículo</dt><dd><?= e((string) $done['vehicle']) ?></dd></div>
+                <div><dt>Quando</dt><dd><?= e((string) $done['when']) ?></dd></div>
+                <div><dt>Valor</dt><dd><?= e((string) $done['total']) ?></dd></div>
+            </dl>
+            <?php if (!empty($done['note'])): ?><p class="done-note"><?= e((string) $done['note']) ?></p><?php endif; ?>
+            <footer>
+                <a class="button-link" href="<?= e((string) $done['pdf']) ?>" target="_blank" rel="noopener">Ver reserva</a>
+                <button class="ghost" type="button" data-done-close>Fechar</button>
+            </footer>
+        </article>
+    </div>
+<?php endif; ?>
 <div class="message-layer" data-message hidden>
     <button type="button" class="message-backdrop" data-message-close aria-label="Fechar"></button>
     <form class="message-panel" data-message-form>

@@ -1,4 +1,42 @@
+function layoutAgenda() {
+  document.querySelectorAll('[data-agenda]').forEach((root) => {
+    const pad = 14;
+    const height = Number(root.getAttribute('data-agenda-height') || 0) + pad;
+    root.querySelectorAll('.agenda-hours, .agenda-col').forEach((el) => {
+      el.style.height = height + 'px';
+    });
+    root.querySelectorAll('[data-top]').forEach((el) => {
+      el.style.top = (Number(el.getAttribute('data-top') || 0) + pad) + 'px';
+      if (el.hasAttribute('data-height')) el.style.height = el.getAttribute('data-height') + 'px';
+      if (el.hasAttribute('data-left')) {
+        el.style.left = 'calc(' + el.getAttribute('data-left') + '% + 4px)';
+        el.style.width = 'calc(' + el.getAttribute('data-width') + '% - 8px)';
+        el.style.right = 'auto';
+      }
+    });
+    root.querySelectorAll('.agenda-now').forEach((mark) => mark.remove());
+    const open = Number(root.getAttribute('data-agenda-open') || 0);
+    const close = Number(root.getAttribute('data-agenda-close') || 0);
+    const hour = Number(root.getAttribute('data-agenda-hour') || 64);
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    if (minutes < open || minutes > close) return;
+    const top = ((minutes - open) / 60) * hour + pad;
+    const label = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    root.querySelectorAll('.agenda-col.is-today').forEach((col) => {
+      const mark = document.createElement('i');
+      mark.className = 'agenda-now';
+      mark.style.top = top + 'px';
+      const text = document.createElement('span');
+      text.textContent = label;
+      mark.appendChild(text);
+      col.appendChild(mark);
+    });
+  });
+}
+
 function bootPage() {
+layoutAgenda();
 if (window.dxTrackTimer) {
   clearInterval(window.dxTrackTimer);
   window.dxTrackTimer = 0;
@@ -6,6 +44,10 @@ if (window.dxTrackTimer) {
 if (window.dxHookTimer) {
   clearInterval(window.dxHookTimer);
   window.dxHookTimer = 0;
+}
+if (window.dxWaTimer) {
+  clearInterval(window.dxWaTimer);
+  window.dxWaTimer = 0;
 }
 if (window.dxTrackMap) {
   window.dxTrackMap.remove();
@@ -16,20 +58,34 @@ if (settings) {
   const tabs = [...settings.querySelectorAll('[data-tab]')];
   const form = settings.querySelector('[data-settings-form]');
   const panels = [...settings.querySelectorAll('[data-panel]')];
+  const editing = settings.hasAttribute('data-editing');
   const showTab = (id) => {
+    if (editing) return;
     tabs.forEach((tab) => {
       const active = tab.dataset.tab === id;
       tab.classList.toggle('is-active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
     });
-    const models = id === 'modelos';
-    if (form) form.hidden = models;
     panels.forEach((panel) => {
-      panel.hidden = panel.dataset.panel === 'modelos' ? !models : models || panel.dataset.panel !== id;
+      panel.hidden = panel.dataset.panel !== id;
     });
   };
-  tabs.forEach((tab) => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
-  showTab(new URLSearchParams(window.location.search).has('modelo') ? 'modelos' : 'empresa');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      if (editing) {
+        window.location.href = '/configuracoes?editar=' + encodeURIComponent(tab.dataset.tab || 'empresa');
+        return;
+      }
+      showTab(tab.dataset.tab);
+    });
+  });
+  const start = settings.getAttribute('data-active-tab') || 'empresa';
+  tabs.forEach((tab) => {
+    const active = tab.dataset.tab === start;
+    tab.classList.toggle('is-active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  if (!editing) showTab(start);
   settings.querySelectorAll('[data-hours-row]').forEach((row) => {
     const toggle = row.querySelector('[data-hours-toggle]');
     const times = [...row.querySelectorAll('input[type="time"]')];
@@ -40,6 +96,224 @@ if (settings) {
   form?.addEventListener('submit', () => {
     form.querySelectorAll('input[type="time"]:disabled').forEach((input) => { input.disabled = false; });
   });
+  const wa = settings.querySelector('[data-wa]');
+  if (wa && !editing) {
+    const csrf = wa.querySelector('[name="_csrf"]')?.value || '';
+    const label = wa.querySelector('[data-wa-label]');
+    const help = wa.querySelector('[data-wa-help]');
+    const profile = wa.querySelector('[data-wa-profile]');
+    const qr = wa.querySelector('[data-wa-qr]');
+    const connect = wa.querySelector('[data-wa-connect]');
+    const disconnect = wa.querySelector('[data-wa-disconnect]');
+    const receipt = wa.querySelector('[data-wa-receipt]');
+    const error = wa.querySelector('[data-wa-error]');
+    const setup = wa.querySelector('[data-wa-setup]');
+    const twoStart = wa.querySelector('[data-wa-2fa-start]');
+    const twoQr = wa.querySelector('[data-wa-2fa-qr]');
+    const twoSecret = wa.querySelector('[data-wa-2fa-secret]');
+    const twoConfirmField = wa.querySelector('[data-wa-2fa-confirm-field]');
+    const twoCode = wa.querySelector('[data-wa-2fa-code]');
+    const twoConfirm = wa.querySelector('[data-wa-2fa-confirm]');
+    const codeField = wa.querySelector('[data-wa-code-field]');
+    const codeInput = wa.querySelector('[data-wa-code]');
+    let twoFactor = wa.dataset.wa2fa === '1';
+    let armed = false;
+    let armTimer = 0;
+    const helpFor = (status) => {
+      if (!twoFactor) return 'Ative o 2FA. O mesmo código passa a ser obrigatório para entrar na plataforma.';
+      if (status === 'conectado') return 'As mensagens saem por este WhatsApp. Excluir a instância tira o aparelho e apaga a instância na API. Confirme duas vezes com o código do 2FA.';
+      if (status === 'aguardando') return 'No celular, o aparelho aparece como DRIVEXPERIENCE TESTE. WhatsApp, Aparelhos conectados, Conectar aparelho.';
+      if (status === 'hibernado') return 'A sessão está pausada. Informe o código do 2FA para gerar o QR Code de novo.';
+      return 'Informe o código do 2FA para gerar o QR Code. O aparelho aparece como DRIVEXPERIENCE TESTE.';
+    };
+    const resetArm = () => {
+      armed = false;
+      window.clearTimeout(armTimer);
+      if (disconnect) disconnect.textContent = 'Excluir instância';
+      if (codeField && wa.dataset.waStatus === 'conectado') codeField.hidden = true;
+    };
+    const paint = (data) => {
+      const status = data.status || wa.dataset.waStatus || 'desconectado';
+      if (typeof data.two_factor === 'boolean') {
+        twoFactor = data.two_factor;
+        wa.dataset.wa2fa = twoFactor ? '1' : '0';
+      }
+      wa.dataset.waStatus = status;
+      if (setup) setup.hidden = twoFactor;
+      if (label) label.textContent = data.label || 'Desconectado';
+      if (help && !armed) help.textContent = data.message || helpFor(status);
+      if (profile) {
+        profile.hidden = !data.profile;
+        profile.textContent = data.profile || '';
+      }
+      const showQr = twoFactor && status !== 'conectado' && !!data.qr;
+      if (qr) {
+        qr.hidden = !showQr;
+        if (showQr) {
+          if (qr.getAttribute('src') !== data.qr) qr.setAttribute('src', data.qr);
+        } else {
+          qr.removeAttribute('src');
+        }
+      }
+      const showConnect = twoFactor && status !== 'conectado';
+      if (connect) {
+        connect.hidden = !showConnect;
+        connect.disabled = !showConnect;
+      }
+      if (codeField) codeField.hidden = !(showConnect || (twoFactor && armed && status !== 'desconectado'));
+      if (disconnect) disconnect.hidden = status === 'desconectado';
+      if (receipt) receipt.hidden = status !== 'conectado';
+      if (status === 'desconectado') resetArm();
+      if (error) {
+        error.hidden = !data.error;
+        error.textContent = data.error || '';
+      }
+    };
+    const post = async (url, extra) => {
+      const body = new FormData();
+      body.append('_csrf', csrf);
+      Object.entries(extra || {}).forEach(([key, value]) => body.append(key, value));
+      const response = await fetch(url, { method: 'POST', body, credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = data.error || 'Não foi possível concluir.';
+        }
+        return;
+      }
+      if (error) error.hidden = true;
+      paint(data);
+    };
+    twoStart?.addEventListener('click', async () => {
+      twoStart.disabled = true;
+      try {
+        const body = new FormData();
+        body.append('_csrf', csrf);
+        const response = await fetch('/configuracoes/whatsapp/2fa', { method: 'POST', body, credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if (error) {
+            error.hidden = false;
+            error.textContent = data.error || 'Não foi possível iniciar o 2FA.';
+          }
+        } else {
+          if (error) error.hidden = true;
+          if (twoQr && data.qr) {
+            twoQr.hidden = false;
+            twoQr.src = data.qr;
+          }
+          if (twoSecret) {
+            twoSecret.hidden = false;
+            twoSecret.textContent = data.secret || '';
+          }
+          if (twoConfirmField) twoConfirmField.hidden = false;
+          if (twoConfirm) twoConfirm.hidden = false;
+          twoStart.hidden = true;
+          if (help) help.textContent = 'Escaneie no aplicativo autenticador e confirme o código de 6 dígitos.';
+        }
+      } catch (failure) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Não foi possível iniciar o 2FA.';
+        }
+      }
+      twoStart.disabled = false;
+    });
+    twoConfirm?.addEventListener('click', async () => {
+      twoConfirm.disabled = true;
+      try {
+        await post('/configuracoes/whatsapp/2fa/ativar', { code: twoCode?.value.trim() || '' });
+      } catch (failure) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Não foi possível ativar o 2FA.';
+        }
+      }
+      twoConfirm.disabled = false;
+    });
+    connect?.addEventListener('click', async () => {
+      if (!twoFactor) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Ative o 2FA da plataforma antes de gerar o QR Code.';
+        }
+        return;
+      }
+      const code = codeInput?.value.trim() || '';
+      if (code.length !== 6) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Informe o código de 6 dígitos do 2FA.';
+        }
+        return;
+      }
+      connect.disabled = true;
+      try {
+        await post('/configuracoes/whatsapp', { code });
+      } catch (failure) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Não foi possível gerar o QR Code.';
+        }
+      }
+      connect.disabled = false;
+    });
+    disconnect?.addEventListener('click', async () => {
+      if (!armed) {
+        armed = true;
+        disconnect.textContent = 'Confirmar exclusão';
+        if (codeField) codeField.hidden = false;
+        if (help) help.textContent = 'Toque outra vez e informe o código do 2FA. A instância sai do celular e é excluída na API.';
+        codeInput?.focus();
+        window.clearTimeout(armTimer);
+        armTimer = window.setTimeout(resetArm, 20000);
+        return;
+      }
+      const code = codeInput?.value.trim() || '';
+      if (code.length !== 6) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Informe o código de 6 dígitos do 2FA.';
+        }
+        return;
+      }
+      resetArm();
+      disconnect.disabled = true;
+      try {
+        await post('/configuracoes/whatsapp/desconectar', { confirm: 'sim', again: 'sim', code });
+      } catch (failure) {
+        if (error) {
+          error.hidden = false;
+          error.textContent = 'Não foi possível desconectar.';
+        }
+      }
+      disconnect.disabled = false;
+    });
+    if (window.dxWaTimer) window.clearInterval(window.dxWaTimer);
+    window.dxWaTimer = window.setInterval(async () => {
+      if (wa.closest('[data-panel]')?.hidden) return;
+      try {
+        const response = await fetch('/configuracoes/whatsapp', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        const data = await response.json().catch(() => null);
+        if (response.ok && data) paint(data);
+      } catch (error) {
+        return;
+      }
+    }, 4000);
+  }
+}
+
+const rolePick = document.querySelector('[data-role-pick]');
+if (rolePick) {
+  const rolePanels = [...document.querySelectorAll('[data-role-panel]')];
+  const showRole = () => {
+    rolePanels.forEach((panel) => {
+      panel.hidden = panel.getAttribute('data-role-panel') !== rolePick.value;
+    });
+  };
+  rolePick.addEventListener('change', showRole);
+  showRole();
 }
 
 const pageTools = document.querySelector('.page-tools');
@@ -83,11 +357,12 @@ if (wizard) {
     dots.forEach((dot, stepIndex) => dot.classList.toggle('current', stepIndex === current));
     const prev = wizard.querySelector('[data-prev]');
     const next = wizard.querySelector('[data-next]');
-    const finish = wizard.querySelector('[data-finish]');
+    const confirm = wizard.querySelector('[data-confirm-reservation]');
     if (prev) prev.hidden = current === 0;
     if (next) next.hidden = current === steps.length - 1;
-    if (finish) finish.hidden = current !== steps.length - 1;
+    if (confirm) confirm.hidden = current !== steps.length - 1;
     if (current === steps.length - 1) paintReview();
+    syncFinish();
   };
   const setError = (index, message) => {
     const slot = steps[index]?.querySelector('[data-step-error]');
@@ -276,6 +551,7 @@ if (wizard) {
       }
       return '';
     }
+    if (index === 2 && needsDrive && !field('vehicle_id')?.value) return 'Selecione o veículo da experiência.';
     if (index === 3) {
       if (modes.length === 0) return 'Selecione ao menos uma experiência ou um pacote.';
       if (needsDrive && !field('vehicle_id')?.value) return 'Selecione o veículo da experiência.';
@@ -294,6 +570,23 @@ if (wizard) {
     }
     return '';
   };
+  const stepNames = ['Cliente', 'Origem', 'Veículo', 'Experiência', 'Agenda', 'Valores'];
+  const gaps = () => stepNames.filter((name, index) => validate(index) !== '');
+  const syncFinish = () => {
+    const confirm = wizard.querySelector('[data-confirm-reservation]');
+    const hint = wizard.querySelector('[data-finish-hint]');
+    const pending = gaps();
+    const ready = pending.length === 0;
+    const last = current === steps.length - 1;
+    if (confirm) confirm.disabled = !ready;
+    if (hint) {
+      hint.hidden = last;
+      hint.textContent = ready ? 'Tudo obrigatório está preenchido.' : 'Continuar libera depois de: ' + pending.join(', ') + '.';
+    }
+    dots.forEach((dot, index) => {
+      dot.classList.toggle('is-done', index < stepNames.length && validate(index) === '');
+    });
+  };
   wizard.addEventListener('click', (event) => {
     if (event.target.closest('[data-next]')) {
       event.preventDefault();
@@ -307,15 +600,13 @@ if (wizard) {
     }
   });
   wizard.addEventListener('submit', (event) => {
-    for (let index = 0; index < steps.length - 1; index += 1) {
-      const message = validate(index);
-      if (message) {
-        event.preventDefault();
-        show(index);
-        setError(index, message);
-        return;
-      }
-    }
+    const pending = gaps();
+    if (pending.length === 0 && current === steps.length - 1) return;
+    event.preventDefault();
+    if (pending.length === 0) return;
+    const index = stepNames.findIndex((name, stepIndex) => validate(stepIndex) !== '');
+    show(index);
+    setError(index, validate(index));
   });
   wizard.addEventListener('change', (event) => {
     if (event.target.name === 'client_mode') syncClient();
@@ -334,6 +625,7 @@ if (wizard) {
         input.placeholder = '';
       }
     }
+    syncFinish();
   });
   wizard.addEventListener('blur', (event) => {
     if (event.target.matches('[data-person-name]')) event.target.value = titleCase(event.target.value);
@@ -342,6 +634,7 @@ if (wizard) {
     if (event.target.matches('[data-cpf]')) maskCpf(event.target);
     if (event.target.matches('[data-phone]')) maskPhone(event.target);
     if (event.target.name === 'discount') syncDiscount();
+    syncFinish();
   });
   syncClient();
   syncPartner();
@@ -366,22 +659,6 @@ document.querySelectorAll('[data-fleet]').forEach((fleet) => {
   };
   buttons.forEach((button) => button.addEventListener('click', () => show(button.dataset.vehicleView)));
   show('grade');
-});
-
-document.querySelectorAll('[data-agenda]').forEach((root) => {
-  const height = root.getAttribute('data-agenda-height') || '0';
-  root.querySelectorAll('.agenda-hours, .agenda-col').forEach((el) => {
-    el.style.height = height + 'px';
-  });
-  root.querySelectorAll('[data-top]').forEach((el) => {
-    el.style.top = (el.getAttribute('data-top') || '0') + 'px';
-    if (el.hasAttribute('data-height')) el.style.height = el.getAttribute('data-height') + 'px';
-    if (el.hasAttribute('data-left')) {
-      el.style.left = 'calc(' + el.getAttribute('data-left') + '% + 2px)';
-      el.style.width = 'calc(' + el.getAttribute('data-width') + '% - 4px)';
-      el.style.right = 'auto';
-    }
-  });
 });
 
 const availability = document.querySelector('[data-availability]');
@@ -440,30 +717,78 @@ document.querySelectorAll('[data-doc-export]').forEach((root) => {
   const download = root.querySelector('[data-doc-download]');
   const formats = root.querySelector('[data-doc-formats]');
   const hint = root.querySelector('[data-doc-hint]');
-  const csv = root.querySelector('[data-doc-csv]');
+  const preview = root.querySelector('[data-doc-preview]');
+  const frame = root.querySelector('[data-doc-frame]');
+  const title = root.querySelector('[data-doc-preview-title]');
+  const formatLabel = root.querySelector('[data-doc-preview-format]');
+  const fileLink = root.querySelector('[data-doc-preview-download]');
+  const issueForm = root.querySelector('[data-doc-preview-issue]');
+  const reservation = root.getAttribute('data-reservation');
   let selected = '';
-  choices.forEach((choice) => {
-    choice.addEventListener('click', () => {
-      selected = choice.getAttribute('data-doc') || '';
-      choices.forEach((item) => {
-        const on = item === choice;
-        item.classList.toggle('is-selected', on);
-        item.setAttribute('aria-pressed', on ? 'true' : 'false');
+  let armed = '';
+  const choice = () => choices.find((item) => item.getAttribute('data-doc') === selected);
+  const openPreview = (format) => {
+    const current = choice();
+    if (!current || !preview || !frame) return;
+    const label = current.textContent.trim();
+    if (title) title.textContent = label;
+    preview.classList.toggle('is-sheet', format === 'csv');
+    if (formatLabel) formatLabel.textContent = format === 'csv' ? 'Planilha CSV em paisagem · clique em Baixar para salvar o arquivo' : 'PDF · confira o documento antes de baixar';
+    frame.src = '/reservas/' + reservation + '/previa?tipo=' + encodeURIComponent(selected) + '&formato=' + format;
+    if (fileLink) {
+      fileLink.hidden = false;
+      fileLink.href = format === 'csv'
+        ? '/reservas/' + reservation + '/csv?tipo=' + encodeURIComponent(selected)
+        : '/reservas/' + reservation + '/pdf?tipo=' + encodeURIComponent(selected);
+      fileLink.textContent = format === 'csv' ? 'Baixar CSV' : 'Baixar PDF';
+    }
+    if (issueForm) issueForm.hidden = true;
+    if (typeof preview.showModal === 'function') preview.showModal();
+    else preview.hidden = false;
+  };
+  choices.forEach((item) => {
+    item.addEventListener('click', () => {
+      selected = item.getAttribute('data-doc') || '';
+      armed = '';
+      choices.forEach((option) => {
+        const on = option === item;
+        option.classList.toggle('is-selected', on);
+        option.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
+      root.querySelectorAll('[data-format]').forEach((button) => button.classList.remove('is-selected'));
       if (download) download.disabled = selected === '';
       if (formats) formats.hidden = true;
-      if (hint) hint.textContent = 'Selecionado: ' + choice.textContent.trim() + '. Clique em Baixar.';
+      if (hint) hint.textContent = 'Selecionado: ' + item.textContent.trim() + '. Clique em Baixar.';
     });
   });
   download?.addEventListener('click', () => {
     if (!selected || !formats) return;
     formats.hidden = false;
-    if (csv) csv.href = '/reservas/' + root.getAttribute('data-reservation') + '/csv?tipo=' + encodeURIComponent(selected);
-    root.querySelectorAll('[data-doc-pdf], [data-doc-issue]').forEach((node) => {
-      const key = node.getAttribute('data-doc-pdf') || node.getAttribute('data-doc-issue');
-      node.hidden = key !== selected;
+    if (hint) hint.textContent = 'Documento selecionado. Clique duas vezes em CSV ou PDF para abrir a pré-visualização.';
+  });
+  root.querySelectorAll('[data-format]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const format = button.getAttribute('data-format') || '';
+      root.querySelectorAll('[data-format]').forEach((item) => item.classList.toggle('is-selected', item === button));
+      if (armed === format) {
+        openPreview(format);
+        return;
+      }
+      armed = format;
+      if (hint) hint.textContent = 'Formato ' + format.toUpperCase() + ' selecionado. Clique novamente para ver a pré-visualização.';
     });
-    if (hint) hint.textContent = 'Documento selecionado. Escolha CSV ou PDF.';
+    button.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      armed = button.getAttribute('data-format') || '';
+      openPreview(armed);
+    });
+  });
+  root.querySelectorAll('[data-doc-preview-close]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (frame) frame.removeAttribute('src');
+      preview?.classList.remove('is-sheet');
+      if (typeof preview?.close === 'function') preview.close();
+    });
   });
 });
 document.querySelectorAll('[data-photo-zoom]').forEach((zoom) => {
@@ -654,10 +979,20 @@ function bootTrack(root) {
   };
   ensureLeaflet().then(() => {
     if (!mapNode || !mapNode.isConnected) return;
+    const mapboxToken = (root.getAttribute('data-mapbox-token') || '').trim();
+    if (!mapboxToken) {
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent = 'MAPBOX_TOKEN não configurado.';
+      }
+      return;
+    }
     window.dxTrackMap = window.L.map(mapNode, { scrollWheelZoom: true }).setView([-26.9906, -48.6348], 13);
-    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
+    window.L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=' + encodeURIComponent(mapboxToken), {
+      tileSize: 512,
+      zoomOffset: -1,
+      maxZoom: 20,
+      attribution: '&copy; Mapbox &copy; OpenStreetMap'
     }).addTo(window.dxTrackMap);
     pull();
     window.dxTrackTimer = setInterval(pull, 4000);
@@ -874,16 +1209,152 @@ function bootMessage() {
       send.disabled = !pack.configured;
     }
   });
+  bootPrefill();
 }
+
+function bootPrefill() {
+  const digits = (value, max) => value.replace(/\D/g, '').slice(0, max);
+  const masks = {
+    cpf(input) {
+      const raw = digits(input.value, 11);
+      let out = raw;
+      if (raw.length > 9) out = raw.slice(0, 3) + '.' + raw.slice(3, 6) + '.' + raw.slice(6, 9) + '-' + raw.slice(9);
+      else if (raw.length > 6) out = raw.slice(0, 3) + '.' + raw.slice(3, 6) + '.' + raw.slice(6);
+      else if (raw.length > 3) out = raw.slice(0, 3) + '.' + raw.slice(3);
+      input.value = out;
+    },
+    cnpj(input) {
+      const raw = digits(input.value, 14);
+      let out = raw;
+      if (raw.length > 12) out = raw.slice(0, 2) + '.' + raw.slice(2, 5) + '.' + raw.slice(5, 8) + '/' + raw.slice(8, 12) + '-' + raw.slice(12);
+      else if (raw.length > 8) out = raw.slice(0, 2) + '.' + raw.slice(2, 5) + '.' + raw.slice(5, 8) + '/' + raw.slice(8);
+      else if (raw.length > 5) out = raw.slice(0, 2) + '.' + raw.slice(2, 5) + '.' + raw.slice(5);
+      else if (raw.length > 2) out = raw.slice(0, 2) + '.' + raw.slice(2);
+      input.value = out;
+    },
+    phone(input) {
+      if (input.value.includes('+')) return;
+      const raw = digits(input.value, 11);
+      if (raw.length === 0) {
+        input.value = '';
+        return;
+      }
+      let out = '(' + raw.slice(0, 2);
+      if (raw.length > 2) out += ') ' + raw.slice(2, 3);
+      if (raw.length > 3) out += ' ' + raw.slice(3, 7);
+      if (raw.length > 7) out += ' - ' + raw.slice(7, 11);
+      input.value = out;
+    },
+    cep(input) {
+      const raw = digits(input.value, 8);
+      input.value = raw.length > 5 ? raw.slice(0, 5) + '-' + raw.slice(5) : raw;
+    },
+    uf(input) {
+      input.value = input.value.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase();
+    },
+    plate(input) {
+      input.value = input.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 7).toUpperCase();
+    },
+    name(input) {
+      const particles = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);
+      input.value = input.value.replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR').split(' ').map((part, index) => {
+        if (!part || (index > 0 && particles.has(part))) return part;
+        return part.charAt(0).toLocaleUpperCase('pt-BR') + part.slice(1);
+      }).join(' ');
+    },
+    money(input) {
+      const raw = input.value.replace(/[^\d,]/g, '');
+      const parts = raw.split(',');
+      input.value = parts.length > 1 ? parts[0] + ',' + parts[1].slice(0, 2) : parts[0];
+    }
+  };
+  const rules = [
+    { label: /nome completo/i, placeholder: 'Maria Silva', mask: 'name' },
+    { name: /full_name|client_name|partner_name/, placeholder: 'Maria Silva', mask: 'name' },
+    { label: /^nome$/i, action: /usuario/, placeholder: 'Maria Silva', mask: 'name' },
+    { label: /cpf/i, placeholder: '000.000.000-00', mask: 'cpf' },
+    { label: /cnpj/i, placeholder: '00.000.000/0001-00', mask: 'cnpj' },
+    { label: /whatsapp|telefone|celular/i, placeholder: '(47) 9 0000 - 0000', mask: 'phone' },
+    { label: /e-mail|email/i, placeholder: 'nome@email.com' },
+    { label: /instagram/i, placeholder: '@usuario' },
+    { label: /^cidade$/i, placeholder: 'Balneário Camboriú' },
+    { label: /^estado$/i, placeholder: 'SC', mask: 'uf' },
+    { label: /^cep$/i, placeholder: '88330-000', mask: 'cep' },
+    { label: /placa/i, placeholder: 'ABC1D23', mask: 'plate' },
+    { label: /^marca$/i, placeholder: 'Porsche' },
+    { label: /^modelo$/i, placeholder: '911 Cabriolet' },
+    { label: /^ano$/i, placeholder: '2024' },
+    { label: /endere[cç]o/i, placeholder: 'Avenida Atlântica, 1000' },
+    { label: /^site$|link interno|link da/i, placeholder: 'https://' },
+    { label: /observa/i, placeholder: 'Anotação interna' },
+    { label: /identificador externo/i, placeholder: 'Código da venda' },
+    { label: /data comemorativa/i, placeholder: 'Dia das Crianças' },
+    { label: /^t[ií]tulo$/i, placeholder: 'Título que aparece no aplicativo' },
+    { label: /texto/i, placeholder: 'Texto curto publicado no aplicativo' },
+    { label: /descri/i, placeholder: 'Descreva em uma frase' },
+    { label: /^nome$/i, placeholder: 'Nome do cadastro' },
+    { name: /amount$|base_price|^price\[/, placeholder: '0,00', mask: 'money' }
+  ];
+  document.querySelectorAll('form input, form textarea').forEach((input) => {
+    if (['hidden', 'checkbox', 'radio', 'file', 'password', 'date', 'time', 'number'].includes(input.type)) return;
+    const label = input.closest('.field')?.querySelector('label')?.textContent.trim() || '';
+    const action = input.form?.getAttribute('action') || '';
+    const rule = rules.find((item) => {
+      if (item.name && !item.name.test(input.name || '')) return false;
+      if (item.label && !item.label.test(label)) return false;
+      if (item.action && !item.action.test(action)) return false;
+      return Boolean(item.label || item.name);
+    });
+    if (!rule) return;
+    if (!input.placeholder) input.placeholder = rule.placeholder;
+    if (rule.mask) input.dataset.mask = input.dataset.mask || rule.mask;
+  });
+  document.querySelectorAll('[data-cpf]').forEach((input) => { input.dataset.mask = 'cpf'; });
+  document.querySelectorAll('[data-phone]').forEach((input) => { input.dataset.mask = 'phone'; });
+  document.querySelectorAll('[data-money]').forEach((input) => { input.dataset.mask = 'money'; });
+  document.querySelectorAll('[data-person-name]').forEach((input) => { input.dataset.mask = 'name'; });
+  const checkMask = (input) => {
+    const kind = input.dataset.mask;
+    const count = kind === 'uf' || kind === 'plate' ? input.value.length : input.value.replace(/\D/g, '').length;
+    const minimum = { cpf: 11, cnpj: 14, phone: 10, cep: 8, uf: 2, plate: 7 }[kind];
+    if (!minimum || input.value.trim() === '') {
+      input.setCustomValidity('');
+      return;
+    }
+    const ok = kind === 'phone' ? count === 10 || count === 11 : count >= minimum;
+    input.setCustomValidity(ok ? '' : 'Complete no formato ' + (input.placeholder || 'indicado') + '.');
+  };
+  document.querySelectorAll('[data-mask]').forEach((input) => {
+    const apply = () => {
+      const mask = masks[input.dataset.mask];
+      if (mask) mask(input);
+    };
+    input.addEventListener('input', () => {
+      if (input.dataset.mask !== 'name') apply();
+      input.setCustomValidity('');
+    });
+    input.addEventListener('blur', () => {
+      apply();
+      checkMask(input);
+    });
+    if (input.value && input.dataset.mask !== 'name') apply();
+  });
+  document.querySelectorAll('form').forEach((form) => {
+    form.addEventListener('click', (event) => {
+      if (!event.target.closest('[type="submit"]')) return;
+      form.querySelectorAll('[data-mask]').forEach(checkMask);
+    });
+  });
+}
+
+document.querySelectorAll('[data-done-close]').forEach((button) => {
+  button.addEventListener('click', () => button.closest('[data-done]')?.remove());
+});
 
 bootPage();
 bootMessage();
 
 document.addEventListener('click', (event) => {
-  const menu = event.target.closest('[data-menu]');
-  if (menu) {
-    document.querySelector('.sidebar')?.classList.toggle('is-open');
-  }
   const confirmButton = event.target.closest('[data-confirm]');
   if (confirmButton && !window.confirm(confirmButton.getAttribute('data-confirm'))) {
     event.preventDefault();
@@ -928,7 +1399,6 @@ async function visit(url, push) {
       item.classList.toggle('active', path === href || (href !== '/' && path.startsWith(href)));
     });
     if (push !== false) history.pushState(null, '', target.pathname + target.search);
-    document.querySelector('.sidebar')?.classList.remove('is-open');
     const frame = document.querySelector('.frame');
     if (frame) frame.scrollTop = 0;
     window.scrollTo(0, 0);

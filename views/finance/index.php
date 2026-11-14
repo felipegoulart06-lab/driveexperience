@@ -1,3 +1,48 @@
+<?php $cashAction = (string) ($_GET['caixa'] ?? ''); ?>
+<section class="card cash-line">
+    <?php if (!$cash): ?>
+        <div class="toolbar">
+            <h2>Caixa fechado</h2>
+            <?php if (\App\Auth\Auth::can('finance.manage') && $cashAction !== 'abrir'): ?>
+                <a class="button-link" href="/financeiro?from=<?= e($from) ?>&to=<?= e($to) ?>&caixa=abrir">Abrir caixa</a>
+            <?php endif; ?>
+        </div>
+        <?php if (\App\Auth\Auth::can('finance.manage') && $cashAction === 'abrir'): ?>
+            <form method="post" action="/financeiro/caixa/abrir" class="expense-grid expense-form">
+                <?= csrf_field() ?>
+                <input type="hidden" name="from" value="<?= e($from) ?>">
+                <input type="hidden" name="to" value="<?= e($to) ?>">
+                <div class="field"><label>Fundo inicial</label><div class="affix affix-prefix"><span>R$</span><input name="opening_amount" required inputmode="decimal" value="0,00"></div></div>
+                <div class="field"><label>Observação</label><input name="note" maxlength="180" placeholder="Opcional"></div>
+                <div class="photo-sale-foot span-2">
+                    <button type="submit">Abrir caixa</button>
+                    <a class="ghost sheet-action" href="/financeiro?from=<?= e($from) ?>&to=<?= e($to) ?>">Cancelar</a>
+                </div>
+            </form>
+        <?php endif; ?>
+    <?php else: ?>
+        <div class="toolbar">
+            <h2>Caixa aberto</h2>
+            <?php if (\App\Auth\Auth::can('finance.manage') && $cashAction !== 'fechar'): ?>
+                <a class="button-link" href="/financeiro?from=<?= e($from) ?>&to=<?= e($to) ?>&caixa=fechar">Fechar caixa</a>
+            <?php endif; ?>
+        </div>
+        <p class="field-help">Desde <?= e(date_br((string) $cash['opened_at'])) ?> · fundo <?= e(money((int) $cash['opening_cents'])) ?> · entradas em dinheiro <?= e(money((int) $cashMovement['in'])) ?> · saídas em dinheiro <?= e(money((int) $cashMovement['out'])) ?> · esperado <?= e(money((int) $cashMovement['expected'])) ?></p>
+        <?php if (\App\Auth\Auth::can('finance.manage') && $cashAction === 'fechar'): ?>
+            <form method="post" action="/financeiro/caixa/fechar" class="expense-grid expense-form">
+                <?= csrf_field() ?>
+                <input type="hidden" name="from" value="<?= e($from) ?>">
+                <input type="hidden" name="to" value="<?= e($to) ?>">
+                <div class="field"><label>Valor contado</label><div class="affix affix-prefix"><span>R$</span><input name="counted_amount" required inputmode="decimal" placeholder="0,00"></div></div>
+                <div class="field"><label>Observação</label><input name="note" maxlength="180" placeholder="Opcional"></div>
+                <div class="photo-sale-foot span-2">
+                    <button type="submit">Fechar caixa</button>
+                    <a class="ghost sheet-action" href="/financeiro?from=<?= e($from) ?>&to=<?= e($to) ?>">Cancelar</a>
+                </div>
+            </form>
+        <?php endif; ?>
+    <?php endif; ?>
+</section>
 <form method="get" class="toolbar filter-bar finance-period">
     <span>Período</span>
     <label class="field-inline"><span>de</span><input type="date" name="from" value="<?= e($from) ?>"></label>
@@ -70,18 +115,28 @@
             <?php endif; ?>
         </article>
         <?php if (\App\Auth\Auth::can('finance.manage')): ?>
+            <?php $creatingExpense = isset($_GET['nova-despesa']); ?>
+            <?php if (!$creatingExpense): ?>
+                <div class="toolbar"><a class="button-link" href="/financeiro?from=<?= e($from) ?>&to=<?= e($to) ?>&nova-despesa=1">Lançar despesa</a></div>
+            <?php else: ?>
         <form method="post" action="/financeiro/despesas" class="card expense-form">
             <?= csrf_field() ?>
+            <input type="hidden" name="from" value="<?= e($from) ?>">
+            <input type="hidden" name="to" value="<?= e($to) ?>">
             <h2>Lançar despesa</h2>
             <div class="expense-grid">
-                <div class="field span-2"><label>Descrição</label><input name="description" required></div>
-                <div class="field"><label>Valor</label><div class="affix affix-prefix"><span>R$</span><input name="amount" required inputmode="decimal"></div></div>
+                <div class="field span-2"><label>Descrição</label><input name="description" required maxlength="255" placeholder="Descreva a despesa"></div>
+                <div class="field"><label>Tipo</label><input name="category" required maxlength="80" list="tipos-despesa" placeholder="Combustível, pedágio, manutenção..."><datalist id="tipos-despesa"><?php foreach ($categories as $category): ?><option value="<?= e($category['name']) ?>"></option><?php endforeach; ?></datalist></div>
+                <div class="field"><label>Valor</label><div class="affix affix-prefix"><span>R$</span><input name="amount" required inputmode="decimal" placeholder="0,00"></div></div>
                 <div class="field"><label>Data</label><input type="date" name="expense_date" value="<?= e(today()) ?>"></div>
-                <div class="field"><label>Categoria</label><select name="category_id"><?php foreach ($categories as $category): ?><option value="<?= (int) $category['id'] ?>"><?= e($category['name']) ?></option><?php endforeach; ?></select></div>
                 <div class="field"><label>Forma</label><select name="method_id"><option value="">Não informada</option><?php foreach ($methods as $method): ?><option value="<?= (int) $method['id'] ?>"><?= e($method['name']) ?></option><?php endforeach; ?></select></div>
             </div>
-            <div class="photo-sale-foot"><button type="submit">Lançar despesa</button></div>
+            <div class="photo-sale-foot">
+                <button type="submit">Lançar despesa</button>
+                <a class="ghost sheet-action" href="/financeiro?from=<?= e($from) ?>&to=<?= e($to) ?>">Cancelar</a>
+            </div>
         </form>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </section>

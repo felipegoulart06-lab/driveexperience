@@ -98,6 +98,9 @@ final class UserService
         Connection::transaction(function () use ($roleId, $slugs): void {
             Connection::run('DELETE FROM role_permissions WHERE role_id = ?', [$roleId]);
             foreach ($slugs as $slug) {
+                if ($slug === 'settings.manage') {
+                    continue;
+                }
                 $permissionId = Connection::value('SELECT id FROM permissions WHERE slug = ?', [$slug]);
                 if ($permissionId) {
                     Connection::run('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [$roleId, (int) $permissionId]);

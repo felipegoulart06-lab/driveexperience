@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($title) ?> · Drive Xperience</title>
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/assets/css/theme.css?v=<?= (int) filemtime(base_path('public/assets/css/theme.css')) ?>">
     <link rel="stylesheet" href="/assets/css/app.css?v=<?= (int) filemtime(base_path('public/assets/css/app.css')) ?>">
 </head>

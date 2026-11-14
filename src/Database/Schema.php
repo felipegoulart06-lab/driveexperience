@@ -65,6 +65,9 @@ final class Schema
         self::addColumn('reservations', 'commission_bps', 'INTEGER NOT NULL DEFAULT 0');
         self::addColumn('reservations', 'commission_cents', 'INTEGER NOT NULL DEFAULT 0');
         self::addColumn('reservations', 'payment_plan', 'VARCHAR(20) NULL');
+        self::addColumn('users', 'totp_secret', "{$text} NULL");
+        self::addColumn('users', 'totp_enabled', "{$bool} NOT NULL DEFAULT 0");
+        self::adoptWhatsappTwoFactor();
         Connection::pdo()->exec("CREATE TABLE IF NOT EXISTS trackers (\n{$id}, vehicle_id {$ref} NULL, name VARCHAR(120) NOT NULL, external_id VARCHAR(80) NOT NULL UNIQUE, active {$bool} NOT NULL DEFAULT 1, last_lat {$real} NULL, last_lng {$real} NULL, last_speed {$real} NULL, last_heading {$real} NULL, last_seen_at {$dt} NULL, created_at {$dt} NOT NULL, updated_at {$dt} NOT NULL, FOREIGN KEY (vehicle_id) REFERENCES vehicles(id)\n){$engine}");
         Connection::pdo()->exec("CREATE TABLE IF NOT EXISTS tracker_positions (\n{$id}, tracker_id {$ref} NOT NULL, latitude {$real} NOT NULL, longitude {$real} NOT NULL, speed_kmh {$real} NULL, heading {$real} NULL, recorded_at {$dt} NOT NULL, FOREIGN KEY (tracker_id) REFERENCES trackers(id) ON DELETE CASCADE\n){$engine}");
         try {
@@ -77,8 +80,17 @@ final class Schema
         }
         Connection::pdo()->exec("CREATE TABLE IF NOT EXISTS inbound_webhooks (\n{$id}, platform_id {$ref} NOT NULL, name VARCHAR(120) NOT NULL, token VARCHAR(80) NOT NULL UNIQUE, active {$bool} NOT NULL DEFAULT 0, test_mode {$bool} NOT NULL DEFAULT 1, allowed_domains {$text} NULL, mapping_json {$text} NULL, created_at {$dt} NOT NULL, updated_at {$dt} NOT NULL, FOREIGN KEY (platform_id) REFERENCES platforms(id)\n){$engine}");
         Connection::pdo()->exec("CREATE TABLE IF NOT EXISTS webhook_captures (\n{$id}, webhook_id {$ref} NOT NULL, payload_json {$text} NOT NULL, source_host VARCHAR(190) NULL, created_at {$dt} NOT NULL, FOREIGN KEY (webhook_id) REFERENCES inbound_webhooks(id) ON DELETE CASCADE\n){$engine}");
+        Connection::pdo()->exec("CREATE TABLE IF NOT EXISTS cash_sessions (\n{$id}, status VARCHAR(12) NOT NULL, opening_cents INTEGER NOT NULL DEFAULT 0, cash_in_cents INTEGER NOT NULL DEFAULT 0, cash_out_cents INTEGER NOT NULL DEFAULT 0, expected_cents INTEGER NULL, counted_cents INTEGER NULL, opened_at {$dt} NOT NULL, opened_by {$ref} NULL, closed_at {$dt} NULL, closed_by {$ref} NULL, note {$text} NULL\n){$engine}");
+        if (!Connection::value('SELECT id FROM operating_hours LIMIT 1')) {
+            for ($day = 0; $day <= 6; $day++) {
+                Connection::insert('INSERT INTO operating_hours (weekday, opens_at, closes_at, active) VALUES (?, ?, ?, 1)', [$day, '09:00', '18:00']);
+            }
+        }
         self::grant('Ver rastreio', 'tracking.view', 'rastreio', ['administrador', 'operacional', 'atendimento']);
         self::grant('Gerir rastreio', 'tracking.manage', 'rastreio', ['administrador', 'operacional']);
+        self::grant('Gerir reservas', 'reservations.manage', 'reservas', ['administrador', 'atendimento', 'operacional']);
+        self::grant('Gerir fotos', 'photos.manage', 'fotos', ['administrador', 'atendimento', 'operacional']);
+        self::grant('Emitir documentos', 'documents.issue', 'documentos', ['administrador', 'atendimento', 'financeiro', 'operacional']);
         if (Connection::value('SELECT setting_key FROM settings WHERE setting_key = ?', ['tracking_token']) === null) {
             \App\Services\Settings::set('tracking_token', bin2hex(random_bytes(24)));
         }
@@ -117,6 +129,31 @@ final class Schema
                 Connection::run('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [(int) $roleId, (int) $permissionId]);
             }
         }
+    }
+
+    private static function adoptWhatsappTwoFactor(): void
+    {
+        $enabled = Connection::one('SELECT setting_value FROM settings WHERE setting_key = ?', ['wa_2fa_enabled']);
+        if (!$enabled || (string) $enabled['setting_value'] !== '1') {
+            return;
+        }
+        $secret = Connection::one('SELECT setting_value, updated_by FROM settings WHERE setting_key = ?', ['wa_2fa_secret']);
+        if (!$secret || trim((string) $secret['setting_value']) === '') {
+            return;
+        }
+        $userId = (int) ($secret['updated_by'] ?? 0);
+        if ($userId <= 0) {
+            $userId = (int) Connection::value(
+                "SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.slug = 'administrador' AND u.deleted_at IS NULL AND u.active = 1 ORDER BY u.id LIMIT 1"
+            );
+        }
+        if ($userId <= 0) {
+            return;
+        }
+        Connection::run(
+            'UPDATE users SET totp_secret = ?, totp_enabled = 1, updated_at = ? WHERE id = ? AND (totp_enabled = 0 OR totp_secret IS NULL OR totp_secret = \'\')',
+            [(string) $secret['setting_value'], now(), $userId]
+        );
     }
 
     private static function addColumn(string $table, string $column, string $definition): void
