@@ -78,12 +78,16 @@ try {
     }
     back_with_errors($exception->errors, '/');
 } catch (Throwable $exception) {
-    error_log($exception::class);
+    error_log($exception::class . ' ' . $exception->getMessage());
     http_response_code(500);
     $layout = $installed && Auth::check() ? 'layouts/app.php' : 'layouts/guest.php';
+    $message = 'Não foi possível concluir a operação.';
+    if (app_debug() || ($exception instanceof RuntimeException && !$exception instanceof PDOException)) {
+        $message = $exception->getMessage();
+    }
     view('errors/status', [
         'title' => 'Erro interno',
-        'message' => app_debug() ? $exception->getMessage() : 'Não foi possível concluir a operação.',
+        'message' => $message,
         '_layout' => $layout,
     ]);
 }

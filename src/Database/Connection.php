@@ -50,11 +50,15 @@ final class Connection
                 } catch (PDOException) {
                 }
             } elseif ($driver === 'pgsql') {
-                $host = env('DB_HOST', '127.0.0.1');
-                $port = env('DB_PORT', '5432');
+                $host = (string) (env('DB_HOST', '127.0.0.1') ?: '127.0.0.1');
+                $port = (string) (env('DB_PORT', '5432') ?: '5432');
                 $database = env('DB_DATABASE', '');
                 if ($database === null || $database === '') {
                     throw new RuntimeException('DB_DATABASE não foi informado.');
+                }
+                $pooled = str_contains($host, 'pooler.supabase.com');
+                if ($pooled && $port === '5432') {
+                    $port = '6543';
                 }
                 $ssl = env('DB_SSLMODE', 'require') ?: 'require';
                 $dsn = sprintf(
@@ -67,9 +71,15 @@ final class Connection
                 $pdo = new PDO($dsn, (string) env('DB_USERNAME', ''), (string) env('DB_PASSWORD', ''), [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false,
+                    PDO::ATTR_EMULATE_PREPARES => $pooled,
                 ]);
-                $pdo->exec("SET TIME ZONE 'America/Sao_Paulo'");
+                try {
+                    $pdo->exec("SET TIME ZONE 'America/Sao_Paulo'");
+                } catch (PDOException $exception) {
+                    if (!$pooled) {
+                        throw $exception;
+                    }
+                }
             } else {
                 $host = env('DB_HOST', '127.0.0.1');
                 $port = env('DB_PORT', '3306');

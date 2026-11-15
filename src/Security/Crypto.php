@@ -39,6 +39,18 @@ final class Crypto
     {
         $appKey = (string) env('APP_KEY', '');
         if (strlen($appKey) < 32) {
+            try {
+                $stored = \App\Database\Connection::value(
+                    'SELECT setting_value FROM settings WHERE setting_key = ?',
+                    ['app_key']
+                );
+                if (is_string($stored) && strlen($stored) >= 32) {
+                    $appKey = $stored;
+                }
+            } catch (\Throwable) {
+            }
+        }
+        if (strlen($appKey) < 32) {
             throw new RuntimeException('APP_KEY ausente ou curta demais.');
         }
         return hash('sha256', $appKey, true);
