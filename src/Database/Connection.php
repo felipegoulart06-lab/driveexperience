@@ -58,7 +58,7 @@ final class Connection
                 }
                 $ssl = env('DB_SSLMODE', 'require') ?: 'require';
                 $dsn = sprintf(
-                    'pgsql:host=%s;port=%s;dbname=%s;sslmode=%s',
+                    'pgsql:host=%s;port=%s;dbname=%s;sslmode=%s;connect_timeout=5',
                     $host,
                     $port,
                     $database,

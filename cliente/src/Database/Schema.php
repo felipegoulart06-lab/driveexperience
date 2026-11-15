@@ -10,6 +10,17 @@ final class Schema
 {
     public static function ensure(): void
     {
+        static $ready = false;
+        if ($ready) {
+            return;
+        }
+        try {
+            if (Connection::value('SELECT setting_value FROM settings WHERE setting_key = ?', ['schema_ready']) === '20261115') {
+                $ready = true;
+                return;
+            }
+        } catch (\Throwable) {
+        }
         $id = match (Connection::driver()) {
             'mysql' => 'id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY',
             'pgsql' => 'id BIGSERIAL PRIMARY KEY',

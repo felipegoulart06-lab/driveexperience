@@ -45,7 +45,13 @@ final class Schema
 
     public static function ensure(): void
     {
-        if (!self::installed()) {
+        static $ready = false;
+        if ($ready || !self::installed()) {
+            return;
+        }
+        $stamp = Connection::value('SELECT setting_value FROM settings WHERE setting_key = ?', ['schema_ready']);
+        if ($stamp === '20261115') {
+            $ready = true;
             return;
         }
         $types = self::types(Connection::driver());
@@ -111,6 +117,13 @@ final class Schema
                 ]
             );
         }
+        $existing = Connection::value('SELECT setting_key FROM settings WHERE setting_key = ?', ['schema_ready']);
+        if ($existing === null) {
+            Connection::run('INSERT INTO settings (setting_key, setting_value, updated_at) VALUES (?, ?, ?)', ['schema_ready', '20261115', now()]);
+        } else {
+            Connection::run('UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?', ['20261115', now(), 'schema_ready']);
+        }
+        $ready = true;
     }
 
     private static function grant(string $name, string $slug, string $module, array $roles): void
