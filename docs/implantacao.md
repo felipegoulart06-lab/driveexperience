@@ -16,15 +16,15 @@ Para o projeto Supabase já conectado (`lxqlsdynwtjcovjktxho`), use:
 
 ```text
 DB_DRIVER=pgsql
-DB_HOST=db.lxqlsdynwtjcovjktxho.supabase.co
+DB_HOST=aws-1-sa-east-1.pooler.supabase.com
 DB_PORT=5432
 DB_DATABASE=postgres
-DB_USERNAME=postgres
-DB_PASSWORD=<senha do painel Database Settings>
+DB_USERNAME=dx_vercel.lxqlsdynwtjcovjktxho
+DB_PASSWORD=<senha da role dx_vercel>
 DB_SSLMODE=require
 ```
 
-A senha fica em Project Settings → Database no [dashboard do Supabase](https://supabase.com/dashboard/project/lxqlsdynwtjcovjktxho/settings/database). Em produção, a connection string com a role `postgres` é a adequada para o PHP. Essa role ignora o RLS de propósito. A chave `anon` e o papel `authenticated` não têm acesso a nenhuma tabela: cada tabela tem RLS obrigatório e a política `deny_api`. Não reative esses privilégios no painel do Supabase.
+O endereço direto `db.lxqlsdynwtjcovjktxho.supabase.co` só responde em IPv6. A Vercel precisa do pooler acima, que é IPv4, na porta 5432 (modo sessão, para as consultas preparadas do PHP). A role `dx_vercel` ignora o RLS de propósito. A chave `anon` e o papel `authenticated` não têm acesso a nenhuma tabela: cada tabela tem RLS obrigatório e a política `deny_api`. Não reative esses privilégios no painel do Supabase.
 
 Sessões ficam na tabela `sessions`. PDFs ficam na coluna `documents.content` quando `STORAGE_DRIVER=database`, ou em um bucket compatível com S3 quando `STORAGE_DRIVER=s3`. Não há pasta local de documentos na produção.
 
